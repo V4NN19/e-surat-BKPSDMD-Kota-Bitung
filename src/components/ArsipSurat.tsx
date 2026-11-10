@@ -158,7 +158,8 @@ export const ArsipSurat: React.FC<ArsipSuratProps> = ({ onLihatSurat }) => {
   const canArchive =
     currentUser?.role === 'SEKRETARIAT' ||
     currentUser?.role === 'ADMIN' ||
-    currentUser?.role === 'KEPALA_KANTOR';
+    currentUser?.role === 'KEPALA_BADAN' ||
+    currentUser?.role === 'KEPALA_BAGIAN';
 
   return (
     <div className="space-y-5">

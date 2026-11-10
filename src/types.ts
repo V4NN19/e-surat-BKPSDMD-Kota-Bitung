@@ -65,6 +65,7 @@ export interface SuratMasuk {
   perihal: string;
   sifat: SifatSurat;
   file_pdf: string;
+  file_url?: string;
   id_kategori: number;
   nama_kategori?: string;
   id_petugas_loket: number;
@@ -125,6 +126,7 @@ export interface SuratKeluar {
   id_bagian_tujuan: number;
   nama_bagian_tujuan?: string;
   isi_ringkas: string;
+  file_url?: string;
   status_persetujuan: StatusSuratKeluar;
   catatan_revisi_terakhir?: string;
   tgl_dibuat: string;

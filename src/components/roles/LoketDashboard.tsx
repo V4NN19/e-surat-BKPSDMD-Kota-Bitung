@@ -58,6 +58,7 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
   const [sifat, setSifat] = useState<SifatSurat>('Biasa');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileName, setSelectedFileName] = useState('');
+  const [selectedFileUrl, setSelectedFileUrl] = useState<string>('');
   const [fileError, setFileError] = useState('');
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
@@ -118,6 +119,7 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
       setFileError('Format berkas tidak valid! Sistem strictly hanya menerima dokumen berekstensi .pdf.');
       setSelectedFile(null);
       setSelectedFileName('');
+      setSelectedFileUrl('');
       return;
     }
 
@@ -125,11 +127,18 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
       setFileError('Ukuran file terlalu besar. Maksimum 15 MB.');
       setSelectedFile(null);
       setSelectedFileName('');
+      setSelectedFileUrl('');
       return;
     }
 
     setSelectedFile(file);
     setSelectedFileName(file.name);
+    try {
+      const url = URL.createObjectURL(file);
+      setSelectedFileUrl(url);
+    } catch {
+      setSelectedFileUrl('');
+    }
   };
 
   const handleResetForm = () => {
@@ -140,6 +149,7 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
     setSifat('Biasa');
     setSelectedFile(null);
     setSelectedFileName('');
+    setSelectedFileUrl('');
     setFileError('');
     setIdKategori(kategoriList[0]?.id || 1);
   };
@@ -153,7 +163,13 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
       return;
     }
 
-    const fileNameToSave = selectedFileName || `berkas_sm_${Date.now()}.pdf`;
+    if (!selectedFile || !selectedFileName) {
+      setFileError('Wajib melampirkan berkas scan surat fisik dalam format PDF sebelum menyimpan!');
+      alert('Surat masuk WAJIB melampirkan berkas PDF scan fisik surat! Silakan pilih file PDF terlebih dahulu.');
+      return;
+    }
+
+    const fileNameToSave = selectedFileName;
 
     const created = addSuratMasuk({
       asal_surat: asalSurat.trim(),
@@ -162,7 +178,8 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
       perihal: perihal.trim(),
       sifat,
       id_kategori: idKategori,
-      file_name: fileNameToSave
+      file_name: fileNameToSave,
+      file_url: selectedFileUrl
     });
 
     setSuccessBanner(

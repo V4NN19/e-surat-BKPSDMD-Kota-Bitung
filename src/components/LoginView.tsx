@@ -75,7 +75,7 @@ const ROLES: RoleOption[] = [
     demoAccountName: 'Jenny Rawung, S.Sos'
   },
   {
-    role: 'KEPALA_KANTOR',
+    role: 'KEPALA_BADAN',
     title: 'Kepala Kantor / Kepala Badan',
     badge: 'KEPALA BADAN',
     badgeBg: 'bg-amber-600 text-white',

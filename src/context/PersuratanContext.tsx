@@ -50,6 +50,7 @@ interface PersuratanContextType {
     sifat: SifatSurat;
     id_kategori: number;
     file_name: string;
+    file_url?: string;
   }) => SuratMasuk;
   verifikasiSuratMasuk: (id: number) => void;
   kembalikanKeLoket: (id: number, alasan: string) => void;
@@ -57,6 +58,8 @@ interface PersuratanContextType {
   teruskanKeBagian: (idSuratMasuk: number) => void;
   kembalikanKeSekretariat: (idSuratMasuk: number, alasan: string) => void;
   updateStatusPengerjaan: (idSuratMasuk: number, status: 'SEDANG_DIPROSES' | 'SELESAI') => void;
+  arsipkanSurat: (idSuratMasuk: number, keterangan?: string) => void;
+  batalArsip: (idSuratMasuk: number) => void;
 
   // Surat Keluar Actions
   buatSuratKeluar: (data: {
@@ -68,6 +71,7 @@ interface PersuratanContextType {
     id_bagian_tujuan: number;
     isi_ringkas: string;
     file_name: string;
+    file_url?: string;
   }) => SuratKeluar;
   setujuiSuratKeluar: (id: number) => void;
   kembalikanRevisiSuratKeluar: (id: number, catatanRevisi: string) => void;
@@ -230,6 +234,7 @@ export const PersuratanProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     sifat: SifatSurat;
     id_kategori: number;
     file_name: string;
+    file_url?: string;
   }): SuratMasuk => {
     const date = new Date();
     const year = date.getFullYear();
@@ -250,6 +255,7 @@ export const PersuratanProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       perihal: data.perihal,
       sifat: data.sifat,
       file_pdf: data.file_name || 'surat_masuk.pdf',
+      file_url: data.file_url,
       id_kategori: Number(data.id_kategori),
       nama_kategori: kategori ? kategori.nama_kategori : 'Umum',
       id_petugas_loket: currentUser?.id || 1,
@@ -396,6 +402,44 @@ export const PersuratanProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     );
   };
 
+  const arsipkanSurat = (idSuratMasuk: number, keterangan?: string) => {
+    const date = new Date();
+    const tglArsipStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    setSuratMasukList(prev =>
+      prev.map(s => {
+        if (s.id === idSuratMasuk) {
+          logAudit('ARSIP_SURAT', `${currentUser?.nama || 'Pengguna'} mengarsipkan surat ${s.no_agenda}`);
+          return {
+            ...s,
+            status_surat: 'ARSIP' as any,
+            is_arsip: true,
+            tgl_arsip: tglArsipStr,
+            keterangan_arsip: keterangan || 'Diarsipkan di lemari dokumen BKPSDMD'
+          };
+        }
+        return s;
+      })
+    );
+  };
+
+  const batalArsip = (idSuratMasuk: number) => {
+    setSuratMasukList(prev =>
+      prev.map(s => {
+        if (s.id === idSuratMasuk) {
+          logAudit('BATAL_ARSIP', `${currentUser?.nama || 'Pengguna'} membatalkan arsip surat ${s.no_agenda}`);
+          return {
+            ...s,
+            status_surat: 'SELESAI',
+            is_arsip: false,
+            tgl_arsip: undefined,
+            keterangan_arsip: undefined
+          };
+        }
+        return s;
+      })
+    );
+  };
+
   // 3. Surat Keluar Actions
   const buatSuratKeluar = (data: {
     no_draft: string;
@@ -406,6 +450,7 @@ export const PersuratanProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     id_bagian_tujuan: number;
     isi_ringkas: string;
     file_name: string;
+    file_url?: string;
   }): SuratKeluar => {
     const date = new Date();
     const nowStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
@@ -424,6 +469,7 @@ export const PersuratanProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       id_bagian_tujuan: Number(data.id_bagian_tujuan),
       nama_bagian_tujuan: tujuan?.nama_bagian || 'Bagian Tujuan',
       isi_ringkas: data.isi_ringkas,
+      file_url: data.file_url,
       status_persetujuan: 'PENGAJUAN_KE_KEPALA_BADAN',
       tgl_dibuat: nowStr,
       versi_file: [
@@ -668,6 +714,8 @@ export const PersuratanProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         teruskanKeBagian,
         kembalikanKeSekretariat,
         updateStatusPengerjaan,
+        arsipkanSurat,
+        batalArsip,
         buatSuratKeluar,
         setujuiSuratKeluar,
         kembalikanRevisiSuratKeluar,

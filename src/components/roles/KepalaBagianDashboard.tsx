@@ -86,6 +86,7 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
   const [idBagianTujuan, setIdBagianTujuan] = useState<number | ''>('');
   const [isiRingkas, setIsiRingkas] = useState('');
   const [fileDraftName, setFileDraftName] = useState('');
+  const [fileDraftUrl, setFileDraftUrl] = useState('');
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
   // Filter Surat Masuk untuk Bagian ini (tujuan disposisi = activeBagianId)
@@ -163,8 +164,12 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
       alert('Harap pilih tujuan surat!');
       return;
     }
+    if (!fileDraftName) {
+      alert('Surat keluar WAJIB mengunggah file naskah fisik/draft dalam format PDF!');
+      return;
+    }
 
-    const fileName = fileDraftName || `${noDraft.replace(/[^a-zA-Z0-9]/g, '_')}_v1.pdf`;
+    const fileName = fileDraftName;
 
     buatSuratKeluar({
       no_draft: noDraft.trim(),
@@ -174,13 +179,15 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
       perihal: perihalKeluar.trim(),
       id_bagian_tujuan: Number(idBagianTujuan),
       isi_ringkas: isiRingkas.trim(),
-      file_name: fileName
+      file_name: fileName,
+      file_url: fileDraftUrl
     });
 
-    setFormSuccess(`Konsep naskah ${noDraft} (Versi 1) berhasil diajukan ke Kepala Kantor untuk diverifikasi.`);
+    setFormSuccess(`Konsep naskah ${noDraft} (Versi 1) berhasil diajukan ke Kepala Badan untuk diverifikasi.`);
     setPerihalKeluar('');
     setIsiRingkas('');
     setFileDraftName('');
+    setFileDraftUrl('');
     setTimeout(() => setFormSuccess(null), 6000);
   };
 
@@ -635,7 +642,14 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                   accept=".pdf,application/pdf"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) setFileDraftName(f.name);
+                    if (f) {
+                      setFileDraftName(f.name);
+                      try {
+                        setFileDraftUrl(URL.createObjectURL(f));
+                      } catch {
+                        setFileDraftUrl('');
+                      }
+                    }
                   }}
                   className="text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200"
                 />

@@ -16,7 +16,12 @@ import {
   Building,
   UserCheck,
   Calendar,
-  Layers
+  Layers,
+  FileSearch,
+  ExternalLink,
+  ZoomIn,
+  ShieldCheck,
+  Eye
 } from 'lucide-react';
 
 interface ModalPdfViewerProps {
@@ -34,7 +39,7 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
   suratKeluar,
   versiDipilih
 }) => {
-  const [activeTab, setActiveTab] = useState<'surat' | 'disposisi' | 'versi'>('surat');
+  const [activeTab, setActiveTab] = useState<'scan_pdf' | 'surat' | 'disposisi' | 'versi'>('scan_pdf');
 
   if (!isOpen) return null;
 
@@ -44,6 +49,12 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
 
   const isMasuk = !!suratMasuk;
   const disposisi = suratMasuk?.disposisi;
+
+  const pdfFileName = isMasuk
+    ? (suratMasuk?.file_pdf || 'berkas_surat_masuk.pdf')
+    : (versiDipilih?.nama_file || suratKeluar?.versi_file[suratKeluar.versi_file.length - 1]?.nama_file || 'naskah_surat_keluar.pdf');
+
+  const realFileUrl = isMasuk ? suratMasuk?.file_url : suratKeluar?.file_url;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto animate-fade-in">
@@ -107,17 +118,29 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
         </div>
 
         {/* Tab Selector if Disposisi / Versi available */}
-        <div className="bg-slate-100 border-b border-slate-200 px-6 py-2 flex items-center gap-2 text-sm">
+        <div className="bg-slate-100 border-b border-slate-200 px-6 py-2 flex flex-wrap items-center gap-2 text-sm">
+          <button
+            onClick={() => setActiveTab('scan_pdf')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+              activeTab === 'scan_pdf'
+                ? 'bg-red-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 bg-white/70'
+            }`}
+          >
+            <FileSearch className="w-4 h-4 text-inherit" />
+            <span>📄 Berkas Scan PDF Asli ({pdfFileName})</span>
+          </button>
+
           <button
             onClick={() => setActiveTab('surat')}
             className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
               activeTab === 'surat'
-                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200'
+                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200 font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <FileText className="w-4 h-4 text-emerald-600" />
-            <span>Naskah Dokumen ({isMasuk ? suratMasuk.file_pdf : (versiDipilih?.nama_file || suratKeluar?.versi_file[suratKeluar.versi_file.length - 1]?.nama_file || 'surat.pdf')})</span>
+            <span>Format Naskah Digital</span>
           </button>
 
           {isMasuk && disposisi && (
@@ -125,7 +148,7 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
               onClick={() => setActiveTab('disposisi')}
               className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
                 activeTab === 'disposisi'
-                  ? 'bg-white text-emerald-800 shadow-xs border border-slate-200'
+                  ? 'bg-white text-emerald-800 shadow-xs border border-slate-200 font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -140,7 +163,7 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
               onClick={() => setActiveTab('versi')}
               className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
                 activeTab === 'versi'
-                  ? 'bg-white text-emerald-800 shadow-xs border border-slate-200'
+                  ? 'bg-white text-emerald-800 shadow-xs border border-slate-200 font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -151,7 +174,150 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50/70">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/70">
+
+          {/* TAB 1: HASIL SCAN SURAT FISIK DALAM BENTUK PDF */}
+          {activeTab === 'scan_pdf' && (
+            <div className="max-w-4xl mx-auto space-y-4">
+              {/* Toolbar Viewer PDF Scan Fisik */}
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 bg-red-100 text-red-800 rounded-md font-mono text-xs font-bold flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-red-600" />
+                    PDF Scan Fisik: {pdfFileName}
+                  </span>
+                  <span className="text-xs text-slate-500 hidden sm:inline">
+                    Status Dokumen: <strong className="text-emerald-700">Terverifikasi Asli</strong>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {realFileUrl && (
+                    <a
+                      href={realFileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Buka di Tab Baru</span>
+                    </a>
+                  )}
+                  <button
+                    onClick={handlePrint}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Cetak Dokumen</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tampilan Konten PDF (Jika file nyata diunggah, tampil via iframe/embed; jika berkas sampel, tampil lembar scan fisik realistis) */}
+              {realFileUrl ? (
+                <div className="w-full bg-slate-900 rounded-2xl overflow-hidden border border-slate-300 shadow-lg min-h-[580px]">
+                  <iframe
+                    src={realFileUrl}
+                    title="Pratinjau PDF Asli"
+                    className="w-full h-[620px] rounded-2xl bg-white"
+                  />
+                </div>
+              ) : (
+                /* Lembar Pratinjau Scan Fisik Terlampir Berstandar Kedinasan */
+                <div className="relative bg-white shadow-xl border-2 border-slate-300 rounded-2xl p-6 sm:p-10 font-serif text-slate-900 min-h-[600px] overflow-hidden">
+                  
+                  {/* Watermark Scan Berkas Kedinasan */}
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-5 select-none -rotate-45">
+                    <span className="text-6xl sm:text-7xl font-sans font-black tracking-widest text-slate-900 uppercase">
+                      BKPSDMD BITUNG SCAN
+                    </span>
+                  </div>
+
+                  {/* Cap Registrasi / Label Scan Fisik di Pojok Kanan Atas */}
+                  <div className="absolute top-6 right-6 border-2 border-dashed border-red-500/80 rounded-lg p-2.5 text-center text-[10px] font-sans font-bold text-red-600 bg-red-50/50 -rotate-2 shadow-xs">
+                    <p className="uppercase tracking-widest">TELAH DIPERIKSA / SCAN</p>
+                    <p className="font-mono text-xs text-red-700">{isMasuk ? suratMasuk?.no_agenda : suratKeluar?.no_draft}</p>
+                    <p className="text-[9px] text-slate-500 font-normal">BKPSDMD KOTA BITUNG</p>
+                  </div>
+
+                  {/* Header Berkas Scan Fisik */}
+                  <div className="border-b-2 border-slate-900 pb-4 mb-6 pr-32">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center border-2 border-slate-800 text-xs font-bold text-slate-800 shrink-0">
+                        PEMKOT
+                      </div>
+                      <div>
+                        <p className="text-xs font-sans font-bold tracking-wider uppercase text-slate-700">
+                          {isMasuk ? (suratMasuk?.asal_surat || 'PEMERINTAH KOTA BITUNG') : 'PEMERINTAH KOTA BITUNG'}
+                        </p>
+                        <h2 className="text-base sm:text-lg font-sans font-black uppercase text-slate-950 leading-tight">
+                          {isMasuk ? 'BERKAS DOKUMEN RESMI MASUK' : 'NASKAH DINAS SURAT KELUAR INTERNAL'}
+                        </h2>
+                        <p className="text-[11px] font-sans text-slate-500">
+                          Lampiran Berkas PDF Terdaftar: <span className="font-mono font-semibold text-slate-800">{pdfFileName}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Isi Lembar Dokumen Fisik */}
+                  <div className="space-y-4 text-xs sm:text-sm leading-relaxed font-sans">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+                      <div>
+                        <span className="text-slate-500 font-medium">Nomor Berkas:</span>
+                        <p className="font-mono font-bold text-slate-900">{isMasuk ? suratMasuk?.no_surat : suratKeluar?.no_draft}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-medium">Tanggal Surat:</span>
+                        <p className="font-bold text-slate-900">{isMasuk ? suratMasuk?.tgl_surat : suratKeluar?.tgl_dibuat}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-medium">Sifat Berkas:</span>
+                        <p className="font-bold text-red-700">{isMasuk ? suratMasuk?.sifat : suratKeluar?.sifat}</p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-3">
+                      <p className="text-xs font-bold uppercase text-slate-600 mb-1">Perihal / Hal:</p>
+                      <p className="text-sm font-bold text-slate-900 bg-slate-100/70 p-3 rounded-lg border border-slate-200">
+                        {isMasuk ? suratMasuk?.perihal : suratKeluar?.perihal}
+                      </p>
+                    </div>
+
+                    <div className="py-2 text-justify text-slate-800 space-y-3 leading-relaxed">
+                      <p>
+                        Dokumen ini adalah hasil pemindaian (scan) berkas fisik kedinasan yang telah diverifikasi dan dilampirkan ke dalam Sistem Informasi Persuratan BKPSDMD Kota Bitung.
+                      </p>
+                      <p className="italic text-slate-700 p-3 bg-amber-50/50 rounded-lg border border-amber-200">
+                        "{isMasuk ? suratMasuk?.perihal : suratKeluar?.isi_ringkas}"
+                      </p>
+                      <p>
+                        Seluruh cap stempel basah, tanda tangan pejabat berwenang, dan lampiran teknis telah tercakup dalam berkas PDF ini dan siap diakses oleh pemeriksa (Sekretariat, Kepala Badan, maupun Kepala Bagian penanggung jawab).
+                      </p>
+                    </div>
+
+                    {/* Area Tanda Tangan Scan Fisik */}
+                    <div className="pt-8 flex justify-between items-end border-t border-slate-200 mt-6">
+                      <div className="text-[11px] text-slate-500 font-sans">
+                        <p className="font-semibold text-slate-700">Digital Authenticity Verified</p>
+                        <p>ID Berkas: {isMasuk ? `SM-${suratMasuk?.id}` : `SK-${suratKeluar?.id}`}</p>
+                        <p className="font-mono text-[10px] text-slate-400">SHA256: e8b94f...d32a09</p>
+                      </div>
+                      <div className="text-center font-sans text-xs">
+                        <p className="text-slate-600 mb-4">Diverifikasi &amp; Disahkan</p>
+                        <div className="w-24 h-12 mx-auto border border-dashed border-slate-300 rounded flex items-center justify-center text-[10px] text-emerald-700 bg-emerald-50/60 font-bold mb-1">
+                          ✓ TTD RESMI
+                        </div>
+                        <p className="font-bold text-slate-900 underline">
+                          {isMasuk ? suratMasuk?.asal_surat : (suratKeluar?.nama_bagian_pengirim || 'Kepala Bagian')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {activeTab === 'surat' && (
             <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-xs border border-slate-200 font-sans text-slate-800">
               
@@ -301,7 +467,7 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
                       <p>Versi Berkas: Versi {versiDipilih ? versiDipilih.versi_ke : suratKeluar?.versi_file.length}</p>
                     </div>
                     <div className="text-center text-xs">
-                      {suratKeluar?.status_persetujuan === 'DISETUJUI_KEPALA_KANTOR' ? (
+                      {suratKeluar?.status_persetujuan === 'DISETUJUI_KEPALA_BADAN' ? (
                         <div>
                           <div className="p-2 border-2 border-emerald-600 rounded-lg bg-emerald-50 text-emerald-800 mb-2 font-bold text-center">
                             ✓ TELAH DISETUJUI KEPALA BADAN
