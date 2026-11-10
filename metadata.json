@@ -1,0 +1,6 @@
+{
+  "name": "E-Surat BKPSDMD Kota Bitung",
+  "description": "Sistem Informasi Pengelolaan Surat Masuk & Keluar BKPSDMD Kota Bitung dengan Workflow Disposisi Berjenjang dan Versioning Surat Keluar.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
