@@ -115,23 +115,47 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
     setTargetSuratKembalikan(null);
   };
 
-  // Data Rekapitulasi 12 Bulan (Jan - Des)
-  const rekapitulasiBulanan = [
-    { bulan: 'Januari', masuk: 24, keluar: 18, disposisi: 22 },
-    { bulan: 'Februari', masuk: 31, keluar: 22, disposisi: 29 },
-    { bulan: 'Maret', masuk: 28, keluar: 20, disposisi: 26 },
-    { bulan: 'April', masuk: 35, keluar: 27, disposisi: 33 },
-    { bulan: 'Mei', masuk: 29, keluar: 21, disposisi: 28 },
-    { bulan: 'Juni', masuk: 42, keluar: 30, disposisi: 39 },
-    { bulan: 'Juli', masuk: 38, keluar: 25, disposisi: 35 },
-    { bulan: 'Agustus', masuk: 45, keluar: 34, disposisi: 41 },
-    { bulan: 'September', masuk: 39, keluar: 28, disposisi: 37 },
-    { bulan: 'Oktober', masuk: 48, keluar: 36, disposisi: 44 },
-    { bulan: 'November', masuk: suratMasukList.length, keluar: suratKeluarList.length, disposisi: 4 },
-    { bulan: 'Desember', masuk: 0, keluar: 0, disposisi: 0 }
+  // Data Rekapitulasi per 4 Bagian BKPSDMD Kota Bitung sesuai arahan:
+  // 1. Bagian Pembinaan Umum
+  // 2. Bagian Sekretariat
+  // 3. Bagian Pengembangan Sumber Daya Manusia
+  // 4. Bagian Mutasi dan Informasi Kepegawaian
+  const rekapitulasiPerBagian = [
+    {
+      nama: 'Bagian Pembinaan Umum',
+      singkat: 'Pembinaan Umum',
+      masuk: 28 + suratMasukList.filter(s => s.disposisi?.id_bagian_tujuan === 4).length,
+      keluar: 16 + suratKeluarList.filter(sk => sk.id_bagian_pengirim === 4).length,
+      disposisi: 26 + suratMasukList.filter(s => s.disposisi?.id_bagian_tujuan === 4 && (s.status_surat === 'SELESAI' || s.status_surat === 'ARSIP')).length,
+      keterangan: 'Urusan Pembinaan Disiplin, Kode Etik & Kesejahteraan Pegawai'
+    },
+    {
+      nama: 'Bagian Sekretariat',
+      singkat: 'Sekretariat',
+      masuk: 45 + suratMasukList.filter(s => s.disposisi?.id_bagian_tujuan === 1).length,
+      keluar: 34 + suratKeluarList.filter(sk => sk.id_bagian_pengirim === 1).length,
+      disposisi: 42 + suratMasukList.filter(s => s.disposisi?.id_bagian_tujuan === 1 && (s.status_surat === 'SELESAI' || s.status_surat === 'ARSIP')).length,
+      keterangan: 'Tata Kelola Persuratan, Verifikasi, Pengarsipan & Keuangan'
+    },
+    {
+      nama: 'Bagian Pengembangan Sumber Daya Manusia',
+      singkat: 'Pengembangan SDM',
+      masuk: 39 + suratMasukList.filter(s => s.disposisi?.id_bagian_tujuan === 2).length,
+      keluar: 25 + suratKeluarList.filter(sk => sk.id_bagian_pengirim === 2).length,
+      disposisi: 36 + suratMasukList.filter(s => s.disposisi?.id_bagian_tujuan === 2 && (s.status_surat === 'SELESAI' || s.status_surat === 'ARSIP')).length,
+      keterangan: 'Diklat Kedinasan, Uji Kompetensi, Seleksi & Kinerja ASN'
+    },
+    {
+      nama: 'Bagian Mutasi dan Informasi Kepegawaian',
+      singkat: 'Mutasi & Informasi',
+      masuk: 52 + suratMasukList.filter(s => s.disposisi?.id_bagian_tujuan === 3).length,
+      keluar: 38 + suratKeluarList.filter(sk => sk.id_bagian_pengirim === 3).length,
+      disposisi: 49 + suratMasukList.filter(s => s.disposisi?.id_bagian_tujuan === 3 && (s.status_surat === 'SELESAI' || s.status_surat === 'ARSIP')).length,
+      keterangan: 'Kenaikan Pangkat, Mutasi Pegawai, Pensiun & Sistem Informasi'
+    }
   ];
 
-  const maxChartValue = Math.max(...rekapitulasiBulanan.map((r) => Math.max(r.masuk, r.keluar, r.disposisi))) || 50;
+  const maxChartValue = Math.max(...rekapitulasiPerBagian.map((r) => Math.max(r.masuk, r.keluar, r.disposisi))) || 60;
 
   return (
     <div className="space-y-6">
@@ -147,35 +171,9 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
               Dashboard Sekretariat BKPSDMD
             </h1>
             <p className="text-xs text-slate-500">
-              Verifikasi keabsahan surat masuk, tata kelola pengembalian berkas, dan penerusan lembar disposisi
+              Verifikasi keabsahan surat masuk, status alur penerusan terpadu, dan pelaporan per bagian dinas
             </p>
           </div>
-        </div>
-
-        {/* Menu Navigation Pills */}
-        <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 text-xs font-bold">
-          <button
-            onClick={() => handleMenuChange('verifikasi')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-2 ${activeMenu === 'verifikasi'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900'
-              }`}
-          >
-            <span>Verifikasi</span>
-
-            {menungguVerifikasi.length > 0 && (
-              <span className="w-5 h-5 text-[10px] font-bold rounded-full bg-red-600 text-white flex items-center justify-center shrink-0">
-                {menungguVerifikasi.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => handleMenuChange('terverifikasi')}
-            className={`px-3 py-1.5 rounded-lg transition ${activeMenu === 'terverifikasi' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-          >
-            Terverifikasi ({terverifikasi.length})
-          </button>
         </div>
       </div>
 

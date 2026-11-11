@@ -22,7 +22,8 @@ import {
   Database,
   History,
   LogOut,
-  FileText
+  FileText,
+  CheckCircle
 } from 'lucide-react';
 import { span } from 'motion/react-client';
 
@@ -162,6 +163,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   )}
                 </button>
                 <button
+                  onClick={() => handleItemClick('terverifikasi')}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'terverifikasi'
+                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate mr-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="truncate">Daftar Terverifikasi</span>
+                  </div>
+                </button>
+                <button
                   onClick={() => handleItemClick('pengembalian')}
                   className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'pengembalian'
                     ? 'bg-emerald-600 text-white font-bold shadow-xs'
@@ -172,14 +185,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span>Pengembalian Surat</span>
                 </button>
                 <button
-                  onClick={() => handleItemClick('penerusan_kaban')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'penerusan_kaban'
+                  onClick={() => handleItemClick('penerusan')}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'penerusan' || activeMenu === 'penerusan_kaban' || activeMenu === 'penerusan_bagian'
                     ? 'bg-emerald-600 text-white font-bold shadow-xs'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                     }`}
                 >
                   <Send className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Penerusan Surat</span>
+                </button>
+                <button
+                  onClick={() => handleItemClick('status_penerusan')}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'status_penerusan'
+                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                >
+                  <ListOrdered className="w-4 h-4 text-teal-400 shrink-0" />
+                  <span>Status Penerusan Surat</span>
                 </button>
                 <button
                   onClick={() => handleItemClick('rekapitulasiBulanan')}
