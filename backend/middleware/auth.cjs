@@ -4,7 +4,7 @@
  */
 
 const jwt = require('jsonwebtoken');
-const db = require('../config/database');
+const db = require('../config/database.cjs');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'bkpsdmd_bitung_secret_key_2026';
 

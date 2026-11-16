@@ -39,7 +39,7 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
     currentUser,
     kategoriList,
     suratMasukList,
-    addSuratMasuk
+    fetchLiveData
   } = usePersuratan();
 
   const [activeTab, setActiveTab] = useState<'input' | 'daftar'>('input');
@@ -154,7 +154,9 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
     setIdKategori(kategoriList[0]?.id || 1);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFileError('');
 
@@ -169,27 +171,49 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
       return;
     }
 
-    const fileNameToSave = selectedFileName;
+    try {
+      const formData = new FormData();
+      formData.append('asal_surat', asalSurat.trim());
+      formData.append('no_surat', noSurat.trim());
+      formData.append('tgl_surat', tglSurat);
+      formData.append('perihal', perihal.trim());
+      formData.append('sifat', sifat);
+      formData.append('id_kategori', String(idKategori));
+      formData.append('file_pdf', selectedFile);
 
-    const created = addSuratMasuk({
-      asal_surat: asalSurat.trim(),
-      no_surat: noSurat.trim(),
-      tgl_surat: tglSurat,
-      perihal: perihal.trim(),
-      sifat,
-      id_kategori: idKategori,
-      file_name: fileNameToSave,
-      file_url: selectedFileUrl
-    });
+      const token = localStorage.getItem('token');
 
-    setSuccessBanner(
-      `Surat masuk berhasil disimpan dengan No. Agenda: ${created.no_agenda}`
-    );
+      const res = await fetch('http://localhost:5000/api/surat_masuk', {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: formData
+      });
 
-    handleResetForm();
-    setTimeout(() => {
-      setSuccessBanner(null);
-    }, 7000);
+      const result = await res.json();
+
+      if (res.ok) {
+        const noAgendaBaru =
+          result.no_agenda || result.data?.no_agenda || 'Tersimpan di Database';
+
+        setSuccessBanner(
+          `Surat masuk berhasil disimpan dengan No. Agenda: ${noAgendaBaru}`
+        );
+
+        handleResetForm();
+        await fetchLiveData();
+
+        setTimeout(() => {
+          setSuccessBanner(null);
+        }, 7000);
+      } else {
+        alert(`Gagal menyimpan ke database: ${result.message || 'Terjadi kesalahan pada server.'}`);
+      }
+    } catch (err) {
+      console.error('Error POST surat masuk:', err);
+      alert('Gagal terhubung ke server backend port 5000.');
+    }
   };
 
   const [isLeaving, setIsLeaving] = useState(false);

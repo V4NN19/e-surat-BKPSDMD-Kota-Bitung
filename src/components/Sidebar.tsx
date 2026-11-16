@@ -186,13 +186,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
                 <button
                   onClick={() => handleItemClick('penerusan')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'penerusan' || activeMenu === 'penerusan_kaban' || activeMenu === 'penerusan_bagian'
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'penerusan' || activeMenu === 'penerusan_kaban' || activeMenu === 'penerusan_bagian'
                     ? 'bg-emerald-600 text-white font-bold shadow-xs'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                     }`}
                 >
-                  <Send className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Penerusan Surat</span>
+                  <div className="flex items-center gap-2.5 truncate mr-2">
+                    <Send className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="truncate">Penerusan Surat</span>
+                  </div>
+                  {suratKeluarList.filter((sk) => sk.status_persetujuan === 'DISETUJUI_KEPALA_BADAN').length > 0 && (
+                    <span className="text-[11px] font-mono font-bold text-white bg-indigo-600 px-2 py-0.5 rounded-full">
+                      {suratKeluarList.filter((sk) => sk.status_persetujuan === 'DISETUJUI_KEPALA_BADAN').length}
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={() => handleItemClick('status_penerusan')}
@@ -287,9 +294,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <FileText className="w-4 h-4 text-purple-400 shrink-0" />
                     <span className="truncate">Pengarsipan Surat</span>
                   </div>
-                  <span className="text-[11px] font-mono font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded-full">
-                    {suratMasukList.filter(s => s.disposisi && s.disposisi.id_bagian_tujuan === (currentUser.id_bagian || 3)).length}
-                  </span>
+                  {(() => {
+                    const totalAktif =
+                      suratMasukList.filter(
+                        (s) =>
+                          s.disposisi &&
+                          s.disposisi.id_bagian_tujuan === (currentUser.id_bagian || 3) &&
+                          (s.status_surat === 'DITERUSKAN_KE_BAGIAN' || s.status_surat === 'SEDANG_DIPROSES')
+                      ).length +
+                      suratKeluarList.filter(
+                        (sk) =>
+                          Number(sk.id_bagian_tujuan) === Number(currentUser.id_bagian || 3) &&
+                          sk.status_persetujuan === 'DITERUSKAN_KE_BAGIAN_TUJUAN'
+                      ).length;
+
+                    return totalAktif > 0 ? (
+                      <span className="text-[11px] font-mono font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded-full">
+                        {totalAktif}
+                      </span>
+                    ) : null;
+                  })()}
                 </button>
                 <button
                   onClick={() => handleItemClick('input_keluar')}
@@ -312,9 +336,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <ListOrdered className="w-4 h-4 text-purple-400 shrink-0" />
                     <span className="truncate">Riwayat Surat Keluar</span>
                   </div>
-                  <span className="text-[11px] font-mono font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded-full">
-                    {suratKeluarList.filter(sk => sk.id_bagian_pengirim === (currentUser.id_bagian || 3)).length}
-                  </span>
                 </button>
               </>
             )}

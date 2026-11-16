@@ -22,12 +22,14 @@ import {
 
 interface SekretariatDashboardProps {
   onLihatSurat: (surat: SuratMasuk) => void;
+  onLihatSuratKeluar?: (sk: any) => void;
   activeMenu?: string;
   onSelectMenu?: (menu: string) => void;
 }
 
 export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
   onLihatSurat,
+  onLihatSuratKeluar,
   activeMenu: externalActiveMenu,
   onSelectMenu
 }) => {
@@ -36,7 +38,8 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
     suratKeluarList,
     verifikasiSuratMasuk,
     kembalikanKeLoket,
-    teruskanKeBagian
+    teruskanKeBagian,
+    teruskanSuratKeluar,
   } = usePersuratan();
 
   const [internalMenu, setInternalMenu] = useState<string>('verifikasi');
@@ -97,6 +100,14 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
   const antreanKepalaKantor = suratMasukList.filter(
     (s) => s.status_surat === 'MENUNGGU_DISPOSISI_KEPALA_BADAN'
   );
+
+  // Ambil daftar surat keluar internal yang sudah disetujui Kepala Badan
+  const suratKeluarSiapDiteruskan = (suratKeluarList || []).filter(
+    (sk) => sk.status_persetujuan === 'DISETUJUI_KEPALA_BADAN'
+  );
+
+  // Gabungan total berkas siap diteruskan (Surat Masuk Disposisi + Surat Keluar Disetujui)
+  const totalSiapDiteruskan = siapDiteruskanKeBagian.length + suratKeluarSiapDiteruskan.length;
 
   const handleOpenModalKembalikan = (surat: SuratMasuk) => {
     setTargetSuratKembalikan(surat);
@@ -445,72 +456,74 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
             </div>
           </div>
 
-          {/* TABEL 2: Surat yang Dikembalikan Sekretariat ke Loket */}
+          {/* TABEL 2: Dikembalikan oleh Sekretariat ke Petugas Loket */}
           <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
             <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-extrabold text-red-900 flex items-center gap-2">
                   <RotateCcw className="w-5 h-5 text-red-600" />
-                  <span>Dikembalikan ke Loket</span>
+                  <span>Surat Dikembalikan ke Petugas Loket</span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Daftar surat yang dikembalikan ke petugas Loket karena scan buram, lampiran terpotong, atau salah input.
+                  Berkas surat masuk yang ditolak saat verifikasi Sekretariat karena scan buram atau data belum lengkap.
                 </p>
               </div>
               <span className="text-xs font-bold px-2.5 py-1 bg-red-100 text-red-800 rounded-full">
-                {dikembalikanKeLoketCount.length} Berkas
+                {suratMasukList.filter((s) => s.status_surat === 'DIKEMBALIKAN_KE_LOKET').length} Berkas
               </span>
             </div>
 
             <div className="max-h-[300px] overflow-y-auto -mx-4 sm:mx-0 px-4 sm:px-0">
               <table className="w-full text-left text-xs border-collapse min-w-[700px]">
-                <thead className='sticky top-0 z-10'>
+                <thead className="sticky top-0 z-10">
                   <tr className="bg-red-50 text-red-900 uppercase font-bold border-b border-red-200">
                     <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Asal, No, &amp; Perihal Surat</th>
+                    <th className="py-3 px-3 text-center border-r border-slate-200">Asal &amp; Perihal Surat</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Petugas Loket</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Keterangan</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Waktu Dikembalikan</th>
+                    <th className="py-3 px-3 text-center border-r border-slate-200">Catatan Perbaikan</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {dikembalikanKeLoketCount.length === 0 ? (
+                  {suratMasukList.filter((s) => s.status_surat === 'DIKEMBALIKAN_KE_LOKET').length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-6 text-slate-400">
-                        Tidak ada surat yang dikembalikan ke Loket.
+                      <td colSpan={5} className="text-center py-6 text-slate-400">
+                        Tidak ada surat yang sedang dikembalikan ke Loket.
                       </td>
                     </tr>
                   ) : (
-                    dikembalikanKeLoketCount.map((surat) => {
-                      const latestReturn = surat.pengembalian?.[surat.pengembalian.length - 1];
-                      return (
-                        <tr key={surat.id} className="hover:bg-red-50/40 transition">
-                          <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">{surat.no_agenda}</td>
-                          <td className="py-3 px-3 max-w-xs">
-                            <p className="font-bold text-slate-900">{surat.asal_surat}</p>
-                            <p className="text-[11px] font-mono text-slate-500">{surat.no_surat}</p>
-                          </td>
-                          <td className="py-3 px-3 font-semibold text-slate-800 text-center border-r border-slate-200">{surat.nama_petugas_loket}</td>
-                          <td className="py-3 px-3 max-w-sm text-center border-r border-slate-200">
-                            <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-red-950 font-medium">
-                              {latestReturn?.alasan || 'Tidak ada catatan'}
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 text-slate-500 whitespace-nowrap text-center border-r border-slate-200">
-                            {latestReturn?.tgl_kembali || '-'}
-                          </td>
-                          <td className="py-3 px-3 text-center border-r border-slate-200">
-                            <button
-                              onClick={() => onLihatSurat(surat)}
-                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold cursor-pointer"
-                            >
-                              Lihat Berkas
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
+                    suratMasukList
+                      .filter((s) => s.status_surat === 'DIKEMBALIKAN_KE_LOKET')
+                      .map((surat) => {
+                        const latestReturn = surat.pengembalian?.[surat.pengembalian.length - 1];
+                        return (
+                          <tr key={surat.id} className="hover:bg-red-50/40 transition">
+                            <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">
+                              {surat.no_agenda}
+                            </td>
+                            <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
+                              <p className="font-bold text-slate-900">{surat.asal_surat}</p>
+                              <p className="text-[11px] text-slate-600 italic">"{surat.perihal}"</p>
+                            </td>
+                            <td className="py-3 px-3 text-center font-medium border-r border-slate-200">
+                              {surat.nama_petugas_loket}
+                            </td>
+                            <td className="py-3 px-3 max-w-sm text-center border-r border-slate-200">
+                              <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-red-900 font-medium">
+                                {latestReturn?.alasan || 'Berkas perlu diperbaiki oleh Loket'}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-center border-r border-slate-200">
+                              <button
+                                onClick={() => onLihatSurat(surat)}
+                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold cursor-pointer"
+                              >
+                                Lihat Berkas
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                   )}
                 </tbody>
               </table>
@@ -625,93 +638,155 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                   <span>Penerusan Surat ke Kepala Bagian</span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Surat yang telah diterbitkan Lembar Disposisinya oleh Kepala Kantor dan siap diteruskan oleh Sekretariat ke Kepala Bagian / Bidang tujuan.
+                  Surat masuk berdisposisi maupun naskah dinas antar-bagian yang telah disetujui Kepala Badan dan siap diteruskan ke Bagian tujuan.
                 </p>
               </div>
               <span className="text-xs font-bold px-3 py-1 bg-indigo-50 text-indigo-800 rounded-full border border-indigo-200">
-                {siapDiteruskanKeBagian.length} Siap Diteruskan
+                {totalSiapDiteruskan} Siap Diteruskan
               </span>
             </div>
 
-            <div className="max-h-[250px] overflow-y-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+            <div className="max-h-[300px] overflow-y-auto -mx-4 sm:mx-0 px-4 sm:px-0">
               <table className="w-full text-left text-xs border-collapse min-w-[700px]">
-                <thead className='sticky top-0 z-10'>
+                <thead className="sticky top-0 z-10">
                   <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                    <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda</th>
+                    <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda / Draft</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Asal, No, &amp; Perihal Surat</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Tujuan Disposisi</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Instruksi Kepala Badan</th>
+                    <th className="py-3 px-3 text-center border-r border-slate-200">Instruksi / Persetujuan Kepala Badan</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Aksi Penerusan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {siapDiteruskanKeBagian.length === 0 ? (
+                  {totalSiapDiteruskan === 0 ? (
                     <tr>
                       <td colSpan={5} className="text-center py-8 text-slate-400">
-                        ✓ Semua surat yang telah didisposisi sudah berhasil diteruskan ke masing-masing Bagian tujuan.
+                        ✓ Semua surat yang telah didisposisi / disetujui sudah berhasil diteruskan ke masing-masing Bagian tujuan.
                       </td>
                     </tr>
                   ) : (
-                    siapDiteruskanKeBagian.map((surat) => (
-                      <tr key={surat.id} className="hover:bg-slate-50/80 transition">
-                        <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">{surat.no_agenda}</td>
-                        <td className="py-3 px-3 max-w-xs text-center group cursor-pointer border-r border-slate-200">
-                          <div>
-                            <p className="font-bold text-slate-900">
-                              {surat.asal_surat}
-                            </p>
-                          </div>
-
-
-                          <div>
-                            <p className='text-[11px] font-bold inline-block whitespace-normal italic'>
-                              {surat.no_surat}
-                            </p>
-                          </div>
-
-
-                          <div>
-                            <p className="text-[8px] text-slate-600 italic inline-block whitespace-normal cursor-pointer hover-marquee">
-                              {surat.perihal}
-                            </p>
-                          </div>
-                        </td>
-
-                        <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
-                          <div className="flex items-center gap-1.5 font-extrabold text-purple-900 bg-purple-50 p-1.5 rounded-lg border border-purple-200">
-                            <Building className="w-3.5 h-3.5 text-purple-700" />
-                            <span>{surat.disposisi?.nama_bagian_tujuan}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
-                          <div className="text-[11px] text-slate-700 space-y-0.5">
-                            {surat.disposisi?.instruksi.slice(0, 2).map((ins, i) => (
-                              <p key={i} className="whitespace-normal">
-                                • {ins}
+                    <>
+                      {/* 1. BARIS SURAT MASUK YANG SUDAH DIDISPOSISI */}
+                      {siapDiteruskanKeBagian.map((surat) => (
+                        <tr key={`sm-${surat.id}`} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">
+                            <div>{surat.no_agenda}</div>
+                            <span className="mt-1 inline-block px-1.5 py-0.5 text-[9px] font-bold rounded bg-blue-100 text-blue-800">
+                              Surat Masuk
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 max-w-xs text-center group cursor-pointer border-r border-slate-200">
+                            <div>
+                              <p className="font-bold text-slate-900">{surat.asal_surat}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-bold inline-block whitespace-normal italic">
+                                {surat.no_surat}
                               </p>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap space-x-2 text-center border-r border-slate-200">
-                          <button
-                            onClick={() => onLihatSurat(surat)}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold cursor-pointer"
-                          >
-                            Lihat Disposisi
-                          </button>
-                          <button
-                            onClick={() => {
-                              teruskanKeBagian(surat.id);
-                              alert(`Surat ${surat.no_agenda} dan lembar disposisi berhasil diteruskan ke ${surat.disposisi?.nama_bagian_tujuan}!`);
-                            }}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-xs inline-flex items-center gap-1 cursor-pointer"
-                          >
-                            <Send className="w-3.5 h-3.5" />
-                            <span>Teruskan ke Bagian</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-600 italic inline-block whitespace-normal">
+                                {surat.perihal}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
+                            <div className="flex items-center justify-center gap-1.5 font-extrabold text-purple-900 bg-purple-50 p-1.5 rounded-lg border border-purple-200">
+                              <Building className="w-3.5 h-3.5 text-purple-700" />
+                              <span>{surat.disposisi?.nama_bagian_tujuan}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
+                            <div className="text-[11px] text-slate-700 space-y-0.5">
+                              {surat.disposisi?.instruksi.slice(0, 2).map((ins, i) => (
+                                <p key={i} className="whitespace-normal">
+                                  - {ins}
+                                </p>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap space-x-2 text-center border-r border-slate-200">
+                            <button
+                              onClick={() => onLihatSurat(surat)}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold cursor-pointer"
+                            >
+                              Lihat Disposisi
+                            </button>
+                            <button
+                              onClick={() => {
+                                teruskanKeBagian(surat.id);
+                                alert(`Surat ${surat.no_agenda} dan lembar disposisi berhasil diteruskan ke ${surat.disposisi?.nama_bagian_tujuan}!`);
+                              }}
+                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-xs inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>Teruskan ke Bagian</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {/* 2. BARIS SURAT KELUAR INTERNAL YANG DISETUJUI KEPALA BADAN */}
+                      {suratKeluarSiapDiteruskan.map((sk) => (
+                        <tr key={`sk-${sk.id}`} className="hover:bg-emerald-50/30 transition">
+                          <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">
+                            <div>{sk.no_draft}</div>
+                            <span className="mt-1 inline-block px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-100 text-emerald-800">
+                              {sk.jenis_naskah || 'Nota Dinas'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
+                            <div>
+                              <p className="font-bold text-slate-900">Dari: {sk.nama_bagian_pengirim}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-bold inline-block whitespace-normal italic text-slate-700">
+                                {sk.no_draft}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-600 italic inline-block whitespace-normal">
+                                {sk.perihal}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
+                            <div className="flex items-center justify-center gap-1.5 font-extrabold text-purple-900 bg-purple-50 p-1.5 rounded-lg border border-purple-200">
+                              <Building className="w-3.5 h-3.5 text-purple-700" />
+                              <span>{sk.nama_bagian_tujuan}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
+                            <div className="text-[11px] text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg p-1.5 space-y-0.5">
+                              <p className="font-bold">✓ Disetujui Kepala Badan</p>
+                              <p className="text-[10px] text-slate-600 whitespace-normal">
+                                Naskah dinas siap diteruskan ke bagian tujuan
+                              </p>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap space-x-2 text-center border-r border-slate-200">
+                            {onLihatSuratKeluar && (
+                              <button
+                                onClick={() => onLihatSuratKeluar(sk)}
+                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold cursor-pointer"
+                              >
+                                Lihat Naskah
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                teruskanSuratKeluar(sk.id);
+                                alert(`Naskah ${sk.no_draft} berhasil diteruskan ke ${sk.nama_bagian_tujuan}!`);
+                              }}
+                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-xs inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>Teruskan ke Bagian</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
                   )}
                 </tbody>
               </table>
@@ -722,153 +797,346 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
       )
       }
 
-      {/* 5. MENU: LAPORAN REKAPITULASI (GRAFIK + TABEL) */}
-      {
-        activeMenu === 'rekapitulasi' && (
+      {/* 4B. MENU: STATUS PENERUSAN SURAT */}
+      {(activeMenu === 'status_penerusan' ||
+        activeMenu === 'status-penerusan' ||
+        activeMenu === 'status') && (
           <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            {/* TABEL 1: STATUS PENERUSAN SURAT MASUK KE BAGIAN */}
+            <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+              <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-emerald-600" />
-                    <span>Rekapitulasi Bulanan Persuratan BKPSDMD Kota Bitung (Tahun Anggaran 2026)</span>
+                    <FileCheck2 className="w-5 h-5 text-emerald-600" />
+                    <span>Status Penerusan &amp; Tindak Lanjut Surat Masuk</span>
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Grafik komparasi 3 metrik tata kelola: Surat Masuk, Surat Keluar Internal, dan Lembar Disposisi Kepala Badan
+                    Pantau progres pengerjaan surat masuk yang telah diteruskan Sekretariat ke masing-masing Kepala Bagian.
                   </p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => window.print()}
-                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-200 transition cursor-pointer"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Cetak Laporan</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const csvRows = [
-                        ['Bulan', 'Surat Masuk', 'Surat Keluar', 'Disposisi'],
-                        ...rekapitulasiBulanan.map((r) => [r.bulan, r.masuk, r.keluar, r.disposisi])
-                      ];
-                      const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map((e) => e.join(',')).join('\n');
-                      const encodedUri = encodeURI(csvContent);
-                      const link = document.createElement('a');
-                      link.setAttribute('href', encodedUri);
-                      link.setAttribute('download', 'rekapitulasi_persuratan_bkpsdmd_2026.csv');
-                      document.body.appendChild(link);
-                      link.click();
-                    }}
-                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Ekspor CSV/Excel</span>
-                  </button>
-                </div>
+                <span className="text-xs font-bold px-3 py-1 bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200">
+                  {
+                    suratMasukList.filter((s) =>
+                      [
+                        'DITERUSKAN_KE_BAGIAN',
+                        'SEDANG_DIPROSES',
+                        'SELESAI',
+                        'ARSIP',
+                        'DIKEMBALIKAN_KE_SEKRETARIAT',
+                      ].includes(s.status_surat)
+                    ).length
+                  }{' '}
+                  Surat Diteruskan
+                </span>
               </div>
 
-              {/* Visualisasi Grafik Batang */}
-              <div className="bg-slate-50/80 p-5 rounded-2xl border border-slate-200">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                    Visualisasi Aktivitas Per Bulan
-                  </span>
-                  <div className="flex items-center gap-4 text-xs font-semibold">
-                    <span className="flex items-center gap-1.5 text-blue-700">
-                      <span className="w-3 h-3 rounded-xs bg-blue-500 inline-block"></span> Surat Masuk
-                    </span>
-                    <span className="flex items-center gap-1.5 text-purple-700">
-                      <span className="w-3 h-3 rounded-xs bg-purple-500 inline-block"></span> Surat Keluar
-                    </span>
-                    <span className="flex items-center gap-1.5 text-emerald-700">
-                      <span className="w-3 h-3 rounded-xs bg-emerald-500 inline-block"></span> Disposisi
-                    </span>
-                  </div>
-                </div>
-
-                {/* Bar Chart Container */}
-                <div className="h-56 flex items-end justify-between gap-1 sm:gap-2 pt-6 px-2 border-b border-slate-300">
-                  {rekapitulasiBulanan.map((item, idx) => {
-                    const pctMasuk = (item.masuk / maxChartValue) * 100;
-                    const pctKeluar = (item.keluar / maxChartValue) * 100;
-                    const pctDisposisi = (item.disposisi / maxChartValue) * 100;
-
-                    return (
-                      <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
-                        <div className="w-full flex items-end justify-center gap-0.5 sm:gap-1 h-full">
-                          <div
-                            style={{ height: `${pctMasuk}%` }}
-                            className="w-1.5 sm:w-2.5 bg-blue-500 rounded-t-xs hover:bg-blue-600 transition"
-                            title={`Surat Masuk: ${item.masuk}`}
-                          />
-                          <div
-                            style={{ height: `${pctKeluar}%` }}
-                            className="w-1.5 sm:w-2.5 bg-purple-500 rounded-t-xs hover:bg-purple-600 transition"
-                            title={`Surat Keluar: ${item.keluar}`}
-                          />
-                          <div
-                            style={{ height: `${pctDisposisi}%` }}
-                            className="w-1.5 sm:w-2.5 bg-emerald-500 rounded-t-xs hover:bg-emerald-600 transition"
-                            title={`Disposisi: ${item.disposisi}`}
-                          />
-                        </div>
-                        <span className="text-[10px] text-slate-500 font-mono mt-2 truncate w-full text-center">
-                          {item.bulan.substring(0, 3)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Tabel Rekapan */}
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3">
-                  Tabel Rincian Data Rekapitulasi Persuratan
-                </h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse border border-slate-200 rounded-xl overflow-hidden">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                        <th className="py-2.5 px-3 border-r border-slate-200">Bulan Pelaporan</th>
-                        <th className="py-2.5 px-3 text-center border-r border-slate-200">Surat Masuk</th>
-                        <th className="py-2.5 px-3 text-center border-r border-slate-200">Surat Keluar</th>
-                        <th className="py-2.5 px-3 text-center border-r border-slate-200">Disposisi</th>
-                        <th className="py-2.5 px-3 text-center border-r border-slate-200">Rasio Penyelesaian</th>
+              <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+                <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
+                      <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Asal &amp; Perihal Surat</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Tujuan</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Status Pengerjaan</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {suratMasukList.filter((s) =>
+                      [
+                        'DITERUSKAN_KE_BAGIAN',
+                        'SEDANG_DIPROSES',
+                        'SELESAI',
+                        'ARSIP',
+                        'DIKEMBALIKAN_KE_SEKRETARIAT',
+                      ].includes(s.status_surat)
+                    ).length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="text-center py-8 text-slate-400">
+                          Belum ada surat masuk yang diteruskan ke bagian tujuan.
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {rekapitulasiBulanan.map((row, i) => {
-                        const rasio = row.masuk > 0 ? Math.round((row.disposisi / row.masuk) * 100) : 0;
-                        return (
-                          <tr key={i} className="hover:bg-slate-50 transition">
-                            <td className="py-2 px-3 font-semibold text-slate-900">{row.bulan}</td>
-                            <td className="py-2 px-3 text-center font-mono">{row.masuk}</td>
-                            <td className="py-2 px-3 text-center font-mono">{row.keluar}</td>
-                            <td className="py-2 px-3 text-center font-mono">{row.disposisi}</td>
-                            <td className="py-2 px-3 text-center">
+                    ) : (
+                      suratMasukList
+                        .filter((s) =>
+                          [
+                            'DITERUSKAN_KE_BAGIAN',
+                            'SEDANG_DIPROSES',
+                            'SELESAI',
+                            'ARSIP',
+                            'DIKEMBALIKAN_KE_SEKRETARIAT',
+                          ].includes(s.status_surat)
+                        )
+                        .map((surat) => (
+                          <tr key={surat.id} className="hover:bg-slate-50/80 transition">
+                            <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">
+                              {surat.no_agenda}
+                            </td>
+                            <td className="py-3 px-3 max-w-xs border-r border-slate-200">
+                              <p className="font-bold text-slate-900">{surat.asal_surat}</p>
+                              <p className="text-[11px] text-slate-600 line-clamp-1 italic">"{surat.perihal}"</p>
+                            </td>
+                            <td className="py-3 px-3 text-center font-bold text-purple-900 border-r border-slate-200">
+                              {surat.disposisi?.nama_bagian_tujuan || '-'}
+                            </td>
+                            <td className="py-3 px-3 text-center border-r border-slate-200">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rasio >= 90
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : rasio >= 70
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : 'bg-slate-100 text-slate-600'
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${surat.status_surat === 'SELESAI' || surat.status_surat === 'ARSIP'
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : surat.status_surat === 'SEDANG_DIPROSES'
+                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                    : surat.status_surat === 'DIKEMBALIKAN_KE_SEKRETARIAT'
+                                      ? 'bg-red-100 text-red-800 border-red-300'
+                                      : 'bg-blue-100 text-blue-800 border-blue-300'
                                   }`}
                               >
-                                {rasio}% Selesai
+                                {surat.status_surat.replace(/_/g, ' ')}
                               </span>
                             </td>
+                            <td className="py-3 px-3 text-center border-r border-slate-200">
+                              <button
+                                onClick={() => onLihatSurat(surat)}
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Lihat Detail</span>
+                              </button>
+                            </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* TABEL 2: STATUS PENERUSAN NASKAH DINAS INTERNAL (SURAT KELUAR) */}
+            <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+              <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-extrabold text-indigo-950 flex items-center gap-2">
+                    <Send className="w-5 h-5 text-indigo-600" />
+                    <span>Status Penerusan Naskah Dinas Internal Antar-Bagian</span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Riwayat nota dinas / surat internal yang telah disetujui Kepala Badan dan diteruskan Sekretariat ke Bagian tujuan.
+                  </p>
                 </div>
+                <span className="text-xs font-bold px-3 py-1 bg-indigo-50 text-indigo-800 rounded-full border border-indigo-200">
+                  {suratKeluarList.filter((sk) => sk.status_persetujuan === 'DITERUSKAN_KE_BAGIAN_TUJUAN').length}{' '}
+                  Naskah Diteruskan
+                </span>
+              </div>
+
+              <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+                <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
+                      <th className="py-3 px-3 text-center border-r border-slate-200">No. Draft</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Pengirim &amp; Perihal</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Tujuan</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Status Penerusan</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {suratKeluarList.filter((sk) => sk.status_persetujuan === 'DITERUSKAN_KE_BAGIAN_TUJUAN').length ===
+                      0 ? (
+                      <tr>
+                        <td colSpan={5} className="text-center py-8 text-slate-400">
+                          Belum ada naskah dinas internal yang diteruskan ke bagian tujuan.
+                        </td>
+                      </tr>
+                    ) : (
+                      suratKeluarList
+                        .filter((sk) => sk.status_persetujuan === 'DITERUSKAN_KE_BAGIAN_TUJUAN')
+                        .map((sk) => (
+                          <tr key={sk.id} className="hover:bg-indigo-50/40 transition">
+                            <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">
+                              <div>{sk.no_draft}</div>
+                              <span className="mt-1 inline-block px-1.5 py-0.5 text-[9px] font-bold rounded bg-indigo-100 text-indigo-800">
+                                {sk.jenis_naskah || 'Nota Dinas'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 max-w-xs border-r border-slate-200">
+                              <p className="font-bold text-slate-900">Dari: {sk.nama_bagian_pengirim}</p>
+                              <p className="text-[11px] text-slate-600 line-clamp-1 italic">"{sk.perihal}"</p>
+                            </td>
+                            <td className="py-3 px-3 text-center font-bold text-purple-900 border-r border-slate-200">
+                              {sk.nama_bagian_tujuan}
+                            </td>
+                            <td className="py-3 px-3 text-center border-r border-slate-200">
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                DITERUSKAN KE BAGIAN TUJUAN
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-center border-r border-slate-200">
+                              {onLihatSuratKeluar && (
+                                <button
+                                  onClick={() => onLihatSuratKeluar(sk)}
+                                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Lihat Naskah</span>
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
-        )
+        )}
+
+      {/* 5. MENU: LAPORAN REKAPITULASI (GRAFIK + TABEL) */}
+      {(activeMenu === 'rekapitulasi' || activeMenu === 'rekapitulasiBulanan') && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-emerald-600" />
+                  <span>Rekapitulasi Bulanan Persuratan BKPSDMD Kota Bitung (Tahun Anggaran 2026)</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Grafik komparasi 3 metrik tata kelola: Surat Masuk, Surat Keluar Internal, dan Lembar Disposisi Kepala Badan
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-200 transition cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak Laporan</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const csvRows = [
+                      ['Bulan', 'Surat Masuk', 'Surat Keluar', 'Disposisi'],
+                      ...rekapitulasiBulanan.map((r) => [r.bulan, r.masuk, r.keluar, r.disposisi])
+                    ];
+                    const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map((e) => e.join(',')).join('\n');
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement('a');
+                    link.setAttribute('href', encodedUri);
+                    link.setAttribute('download', 'rekapitulasi_persuratan_bkpsdmd_2026.csv');
+                    document.body.appendChild(link);
+                    link.click();
+                  }}
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Ekspor CSV/Excel</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Visualisasi Grafik Batang */}
+            <div className="bg-slate-50/80 p-5 rounded-2xl border border-slate-200">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Visualisasi Aktivitas Per Bulan
+                </span>
+                <div className="flex items-center gap-4 text-xs font-semibold">
+                  <span className="flex items-center gap-1.5 text-blue-700">
+                    <span className="w-3 h-3 rounded-xs bg-blue-500 inline-block"></span> Surat Masuk
+                  </span>
+                  <span className="flex items-center gap-1.5 text-purple-700">
+                    <span className="w-3 h-3 rounded-xs bg-purple-500 inline-block"></span> Surat Keluar
+                  </span>
+                  <span className="flex items-center gap-1.5 text-emerald-700">
+                    <span className="w-3 h-3 rounded-xs bg-emerald-500 inline-block"></span> Disposisi
+                  </span>
+                </div>
+              </div>
+
+              {/* Bar Chart Container */}
+              <div className="h-56 flex items-end justify-between gap-1 sm:gap-2 pt-6 px-2 border-b border-slate-300">
+                {rekapitulasiBulanan.map((item, idx) => {
+                  const pctMasuk = (item.masuk / maxChartValue) * 100;
+                  const pctKeluar = (item.keluar / maxChartValue) * 100;
+                  const pctDisposisi = (item.disposisi / maxChartValue) * 100;
+
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
+                      <div className="w-full flex items-end justify-center gap-0.5 sm:gap-1 h-full">
+                        <div
+                          style={{ height: `${pctMasuk}%` }}
+                          className="w-1.5 sm:w-2.5 bg-blue-500 rounded-t-xs hover:bg-blue-600 transition"
+                          title={`Surat Masuk: ${item.masuk}`}
+                        />
+                        <div
+                          style={{ height: `${pctKeluar}%` }}
+                          className="w-1.5 sm:w-2.5 bg-purple-500 rounded-t-xs hover:bg-purple-600 transition"
+                          title={`Surat Keluar: ${item.keluar}`}
+                        />
+                        <div
+                          style={{ height: `${pctDisposisi}%` }}
+                          className="w-1.5 sm:w-2.5 bg-emerald-500 rounded-t-xs hover:bg-emerald-600 transition"
+                          title={`Disposisi: ${item.disposisi}`}
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-mono mt-2 truncate w-full text-center">
+                        {item.bulan.substring(0, 3)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Tabel Rekapan */}
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3">
+                Tabel Rincian Data Rekapitulasi Persuratan
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse border border-slate-200 rounded-xl overflow-hidden">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                      <th className="py-2.5 px-3 border-r border-slate-200">Bulan Pelaporan</th>
+                      <th className="py-2.5 px-3 text-center border-r border-slate-200">Surat Masuk</th>
+                      <th className="py-2.5 px-3 text-center border-r border-slate-200">Surat Keluar</th>
+                      <th className="py-2.5 px-3 text-center border-r border-slate-200">Disposisi</th>
+                      <th className="py-2.5 px-3 text-center border-r border-slate-200">Rasio Penyelesaian</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {rekapitulasiBulanan.map((row, i) => {
+                      const rasio = row.masuk > 0 ? Math.round((row.disposisi / row.masuk) * 100) : 0;
+                      return (
+                        <tr key={i} className="hover:bg-slate-50 transition">
+                          <td className="py-2 px-3 font-semibold text-slate-900">{row.bulan}</td>
+                          <td className="py-2 px-3 text-center font-mono">{row.masuk}</td>
+                          <td className="py-2 px-3 text-center font-mono">{row.keluar}</td>
+                          <td className="py-2 px-3 text-center font-mono">{row.disposisi}</td>
+                          <td className="py-2 px-3 text-center">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rasio >= 90
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : rasio >= 70
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-slate-100 text-slate-600'
+                                }`}
+                            >
+                              {rasio}% Selesai
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
       }
 
       {/* MODAL KEMBALIKAN BERKAS KE LOKET */}

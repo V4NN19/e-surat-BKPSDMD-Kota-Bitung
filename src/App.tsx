@@ -125,6 +125,7 @@ const MainAppContent: React.FC = () => {
             {currentUser.role === 'SEKRETARIAT' && (
               <SekretariatDashboard
                 onLihatSurat={handleLihatSuratMasuk}
+                onLihatSuratKeluar={handleLihatSuratKeluar}
                 activeMenu={activeMenu}
                 onSelectMenu={setActiveMenu}
               />

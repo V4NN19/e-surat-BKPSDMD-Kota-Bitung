@@ -6,8 +6,8 @@
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
-const db = require('../config/database');
-const { catatLogAktivitas } = require('../middleware/auth');
+const db = require('../config/database.cjs');
+const { catatLogAktivitas } = require('../middleware/auth.cjs');
 
 // Pastikan direktori uploads/surat_masuk tersedia
 const uploadDir = path.join(__dirname, '../../uploads/surat_masuk');
@@ -328,12 +328,85 @@ const updateStatusPengerjaanBagian = async (req, res) => {
   }
 };
 
+const getAllSuratMasuk = async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM surat_masuk ORDER BY id DESC');
+    const [disposisiRows] = await db.query('SELECT * FROM disposisi ORDER BY id DESC');
+    const [pengembalianRows] = await db.query('SELECT * FROM pengembalian_surat ORDER BY id ASC');
+
+    const enriched = rows.map((surat) => {
+      const disp = disposisiRows.find((d) => d.id_surat_masuk === surat.id);
+      const riwayat = pengembalianRows.filter((p) => p.id_surat_masuk === surat.id);
+      return {
+        ...surat,
+        disposisi: disp || undefined,
+        riwayat_pengembalian: riwayat
+      };
+    });
+
+    return res.json(enriched);
+  } catch (error) {
+    console.error('Error getAllSuratMasuk:', error);
+    return res.status(500).json([]);
+  }
+};
+
+const arsipkanSuratMasuk = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { keterangan } = req.body;
+
+    await db.query(
+      `UPDATE surat_masuk SET status_surat = 'ARSIP', is_arsip = 1, tgl_arsip = CURDATE(), keterangan_arsip = ? WHERE id = ?`,
+      [keterangan || 'Diarsipkan di lemari dokumen BKPSDMD', id]
+    );
+
+    await catatLogAktivitas({
+      userId: req.user.id,
+      role: req.user.role,
+      aksi: 'ARSIP_SURAT',
+      keterangan: `Mengarsipkan surat masuk ID ${id}`,
+      ipAddress: req.ip
+    });
+
+    return res.json({ success: true, message: 'Surat berhasil diarsipkan.' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const batalArsipSuratMasuk = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.query(
+      `UPDATE surat_masuk SET status_surat = 'SELESAI', is_arsip = 0, tgl_arsip = NULL, keterangan_arsip = NULL WHERE id = ?`,
+      [id]
+    );
+
+    await catatLogAktivitas({
+      userId: req.user.id,
+      role: req.user.role,
+      aksi: 'BATAL_ARSIP',
+      keterangan: `Membatalkan status arsip surat masuk ID ${id}`,
+      ipAddress: req.ip
+    });
+
+    return res.json({ success: true, message: 'Status arsip berhasil dibatalkan.' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   inputSuratMasuk,
+  getAllSuratMasuk,
   verifikasiSekretariat,
   kembalikanKeLoket,
   buatDisposisi,
   teruskanKeBagian,
+  arsipkanSuratMasuk,
+  batalArsipSuratMasuk,
   kembalikanKeSekretariat,
   updateStatusPengerjaanBagian
 };

@@ -5,8 +5,8 @@
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const db = require('../config/database');
-const { JWT_SECRET, catatLogAktivitas } = require('../middleware/auth');
+const db = require('../config/database.cjs');
+const { JWT_SECRET, catatLogAktivitas } = require('../middleware/auth.cjs');
 
 /**
  * Login Pengguna

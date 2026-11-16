@@ -804,8 +804,10 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {suratKeluarList.map((sk) => {
-                    const versiTerbaru = sk.versi_file[sk.versi_file.length - 1];
-                    const isMenungguApproval = sk.status_persetujuan === 'PENGAJUAN_KE_KEPALA_BADAN';
+                    const daftarVersi = Array.isArray(sk.versi_file) ? sk.versi_file : [];
+                    const versiTerbaru = daftarVersi.length > 0 ? daftarVersi[daftarVersi.length - 1] : null;
+                    const statusApproval = sk.status_persetujuan || 'PENGAJUAN_KE_KEPALA_BADAN';
+                    const isMenungguApproval = statusApproval === 'PENGAJUAN_KE_KEPALA_BADAN';
                     return (
                       <tr key={sk.id} className="hover:bg-slate-50/80 transition">
                         <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap text-center border-l border-r border-slate-200">
@@ -831,14 +833,14 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
                           <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${sk.status_persetujuan === 'DISETUJUI_KEPALA_BADAN'
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusApproval === 'DISETUJUI_KEPALA_BADAN'
                               ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                              : sk.status_persetujuan === 'REVISI'
+                              : statusApproval === 'REVISI'
                                 ? 'bg-red-100 text-red-800 border-red-300'
                                 : 'bg-amber-100 text-amber-800 border-amber-300'
                               }`}
                           >
-                            {sk.status_persetujuan.replace(/_/g, ' ')}
+                            {statusApproval.replace(/_/g, ' ')}
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right whitespace-nowrap space-x-1.5 text-center border-r border-slate-200">

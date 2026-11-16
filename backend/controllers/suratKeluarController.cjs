@@ -6,8 +6,8 @@
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
-const db = require('../config/database');
-const { catatLogAktivitas } = require('../middleware/auth');
+const db = require('../config/database.cjs');
+const { catatLogAktivitas } = require('../middleware/auth.cjs');
 
 // Direktori berkas surat keluar
 const uploadDirKeluar = path.join(__dirname, '../../uploads/surat_keluar');
@@ -245,8 +245,38 @@ const teruskanKeBagianTujuan = async (req, res) => {
   }
 };
 
+const getAllSuratKeluar = async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM surat_keluar ORDER BY id DESC');
+    const [versiRows] = await db.query(
+      'SELECT * FROM surat_keluar_versi_file ORDER BY versi_ke ASC, id ASC'
+    );
+    const [bagianRows] = await db.query('SELECT * FROM master_bagian');
+
+    const hasil = rows.map((sk) => {
+      const pengirim = bagianRows.find(
+        (b) => b.id === (sk.id_bagian_pengirim || sk.id_bagian_pembuat)
+      );
+      const tujuan = bagianRows.find((b) => b.id === sk.id_bagian_tujuan);
+
+      return {
+        ...sk,
+        nama_bagian_pengirim: sk.nama_bagian_pengirim || pengirim?.nama_bagian || '-',
+        nama_bagian_tujuan: sk.nama_bagian_tujuan || tujuan?.nama_bagian || '-',
+        versi_file: versiRows.filter((v) => v.id_surat_keluar === sk.id)
+      };
+    });
+
+    return res.json(hasil);
+  } catch (error) {
+    console.error('Error getAllSuratKeluar:', error);
+    return res.status(500).json([]);
+  }
+};
+
 module.exports = {
   buatKonsepSuratKeluar,
+  getAllSuratKeluar,
   setujuiSuratKeluar,
   kembalikanUntukRevisi,
   uploadRevisiVersiBaru,

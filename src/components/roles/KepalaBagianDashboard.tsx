@@ -49,7 +49,8 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
     updateStatusPengerjaan,
     kembalikanKeSekretariat,
     buatSuratKeluar,
-    uploadRevisiSuratKeluar
+    uploadRevisiSuratKeluar,
+    tandaiNaskahDiterima
   } = usePersuratan();
 
   // Memilih bagian aktif yang sedang dilihat
@@ -87,6 +88,8 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
   const [isiRingkas, setIsiRingkas] = useState('');
   const [fileDraftName, setFileDraftName] = useState('');
   const [fileDraftUrl, setFileDraftUrl] = useState('');
+  const [fileDraftObj, setFileDraftObj] = useState<File | null>(null);
+  const [fileRevisiObj, setFileRevisiObj] = useState<File | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
   // Filter Surat Masuk untuk Bagian ini (tujuan disposisi = activeBagianId)
@@ -130,6 +133,13 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
   const suratKeluarBagian = suratKeluarList.filter(
     (sk) => sk.id_bagian_pengirim === Number(activeBagianId)
   );
+  // Filter Naskah Dinas Internal dari Bagian Lain (sudah disetujui Kepala Badan & diteruskan Sekretariat)
+  const suratKeluarMasukBagian = suratKeluarList.filter(
+    (sk) =>
+      Number(sk.id_bagian_tujuan) === Number(activeBagianId) &&
+      (sk.status_persetujuan === 'DITERUSKAN_KE_BAGIAN_TUJUAN' ||
+        sk.status_persetujuan === 'DITERIMA_BAGIAN_TUJUAN')
+  );
 
   // Handle Kembalikan ke Sekretariat
   const handleOpenKembalikan = (surat: SuratMasuk) => {
@@ -150,7 +160,7 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
   };
 
   // Handle Submit Form Konsep Surat Keluar
-  const handleSubmitKonsepKeluar = (e: React.FormEvent) => {
+  const handleSubmitKonsepKeluar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noDraft.trim() || !perihalKeluar.trim() || !isiRingkas.trim()) {
       alert('Mohon lengkapi semua kolom konsep naskah dinas.');
@@ -171,7 +181,7 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
 
     const fileName = fileDraftName;
 
-    buatSuratKeluar({
+    const hasil = await buatSuratKeluar({
       no_draft: noDraft.trim(),
       jenis_naskah: jenisNaskah,
       sifat: sifatKeluar,
@@ -180,14 +190,18 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
       id_bagian_tujuan: Number(idBagianTujuan),
       isi_ringkas: isiRingkas.trim(),
       file_name: fileName,
-      file_url: fileDraftUrl
+      file_url: fileDraftUrl,
+      file: fileDraftObj
     });
+
+    if (!hasil) return;
 
     setFormSuccess(`Konsep naskah ${noDraft} (Versi 1) berhasil diajukan ke Kepala Badan untuk diverifikasi.`);
     setPerihalKeluar('');
     setIsiRingkas('');
     setFileDraftName('');
     setFileDraftUrl('');
+    setFileDraftObj(null);
     setTimeout(() => setFormSuccess(null), 6000);
   };
 
@@ -200,20 +214,21 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
     setModalUploadRevisiOpen(true);
   };
 
-  const handleConfirmUploadRevisi = () => {
+  const handleConfirmUploadRevisi = async () => {
     if (!targetSuratUploadRevisi) return;
     if (!catatanPerbaikan.trim()) {
       alert('Mohon sertakan catatan poin-poin perbaikan yang telah dilakukan.');
       return;
     }
 
-    uploadRevisiSuratKeluar(
+    await uploadRevisiSuratKeluar(
       targetSuratUploadRevisi.id,
-      fileRevisiName,
+      fileRevisiObj || fileRevisiName,
       catatanPerbaikan.trim()
     );
 
     setModalUploadRevisiOpen(false);
+    setFileRevisiObj(null);
     alert(`Berkas revisi baru berhasil diunggah! Status konsep dikembalikan ke PENGAJUAN_KE_KEPALA_KANTOR.`);
   };
 
@@ -269,9 +284,11 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                   }`}
               >
                 <span>Semua</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${statusFilterMasuk === 'SEMUA' ? 'bg-purple-700 text-white' : 'bg-slate-200 text-slate-700'}`}>
-                  {countSemua}
-                </span>
+                {(countMenunggu + countSedangDiproses) > 0 && (
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${statusFilterMasuk === 'SEMUA' ? 'bg-purple-700 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                    {countMenunggu + countSedangDiproses}
+                  </span>
+                )}
               </button>
 
               <button
@@ -362,12 +379,12 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                   ) : (
                     filteredSuratMasukBagian.map((surat) => (
                       <tr key={surat.id} className="hover:bg-slate-50/80 transition">
-                        <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap border-r border-slate-200">
+                        <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap border-r border-slate-200 text-center">
                           {surat.no_agenda}
                         </td>
                         <td className="py-3 px-3 max-w-xs border-r border-slate-200">
-                          <p className="font-bold text-slate-900">{surat.asal_surat}</p>
-                          <p className="text-[11px] text-slate-600 line-clamp-1 italic">"{surat.perihal}"</p>
+                          <p className="font-bold text-slate-900 text-center">{surat.asal_surat}</p>
+                          <p className="text-[11px] text-slate-600 line-clamp-1 italic text-center">"{surat.perihal}"</p>
                         </td>
                         <td className="py-3 px-3 max-w-sm border-r border-slate-200">
                           <div className="p-2 bg-emerald-50/80 rounded-lg border border-emerald-200 text-[11px] text-emerald-950 font-medium">
@@ -386,7 +403,7 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                             {surat.sifat}
                           </span>
                         </td>
-                        <td className="py-3 px-3 whitespace-nowrap border-r border-slate-200">
+                        <td className="py-3 px-3 whitespace-nowrap border-r border-slate-200 text-center">
                           <span
                             className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${surat.status_surat === 'SELESAI'
                               ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
@@ -402,10 +419,10 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                             {surat.status_surat.replace(/_/g, ' ')}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-right whitespace-nowrap space-x-1.5 border-r border-slate-200">
+                        <td className="py-3 px-3 text-right whitespace-nowrap space-x-1.5 border-r border-slate-200 text-center">
                           <button
                             onClick={() => onLihatSuratMasuk(surat)}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold"
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-center"
                           >
                             <Eye className="w-3.5 h-3.5 inline mr-1" />
                             <span>Lihat</span>
@@ -417,7 +434,7 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                             surat.status_surat !== 'DIKEMBALIKAN_KE_SEKRETARIAT' && (
                               <button
                                 onClick={() => handleOpenKembalikan(surat)}
-                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg font-semibold text-xs"
+                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg font-semibold text-xs text-center"
                                 title="Kembalikan jika materi surat bukan tupoksi bagian Anda"
                               >
                                 Kembalikan
@@ -459,6 +476,96 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                               <span>Arsipkan</span>
                             </button>
                           )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {/* Tabel Naskah Dinas Internal Masuk (Antar-Bagian) */}
+          <div className="bg-white p-3 sm:p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+            <div className="pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-extrabold text-indigo-950">
+                  Naskah Dinas Internal Masuk ke {activeBagian?.nama_bagian}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Nota dinas, memo, atau surat internal dari bidang lain yang telah disetujui Kepala Badan dan diteruskan oleh Sekretariat.
+                </p>
+              </div>
+              <span className="text-xs font-bold px-3 py-1 bg-indigo-50 text-indigo-800 rounded-full border border-indigo-200 self-start sm:self-auto">
+                {suratKeluarMasukBagian.length} Naskah Diterima
+              </span>
+            </div>
+
+            <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+              <table className="w-full text-left text-xs border-collapse min-w-[760px]">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
+                    <th className="py-3 px-3 text-center border-r border-slate-200">No. Naskah / Draft</th>
+                    <th className="py-3 px-3 text-center border-r border-slate-200">Bidang Pengirim &amp; Perihal</th>
+                    <th className="py-3 px-3 text-center border-r border-slate-200">Isi Ringkas</th>
+                    <th className="py-3 px-3 text-center border-r border-slate-200">Sifat</th>
+                    <th className="py-3 px-3 text-center border-r border-slate-200">Status</th>
+                    <th className="py-3 px-3 text-center border-r border-slate-200">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {suratKeluarMasukBagian.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-slate-400 border-r border-slate-200">
+                        Belum ada naskah dinas internal dari bagian lain yang diteruskan ke {activeBagian?.nama_bagian}.
+                      </td>
+                    </tr>
+                  ) : (
+                    suratKeluarMasukBagian.map((sk) => (
+                      <tr key={`sk-masuk-${sk.id}`} className="hover:bg-indigo-50/40 transition">
+                        <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap border-r border-slate-200 text-center">
+                          <div>{sk.no_draft}</div>
+                          <span className="mt-1 inline-block px-2 py-0.5 text-[10px] font-bold rounded bg-indigo-100 text-indigo-800">
+                            {sk.jenis_naskah || 'Nota Dinas'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 max-w-xs border-r border-slate-200">
+                          <p className="font-bold text-slate-900 text-center">Dari: {sk.nama_bagian_pengirim}</p>
+                          <p className="text-[11px] text-slate-600 line-clamp-2 italic text-center">"{sk.perihal}"</p>
+                        </td>
+                        <td className="py-3 px-3 max-w-sm border-r border-slate-200">
+                          <p className="text-[11px] text-slate-700 line-clamp-2 text-center">{sk.isi_ringkas}</p>
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-200 text-center">
+                          <span className="px-2 py-0.5 rounded font-semibold text-[11px] bg-slate-100 text-slate-700">
+                            {sk.sifat}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap border-r border-slate-200 text-center">
+                          {sk.status_persetujuan === 'DITERIMA_BAGIAN_TUJUAN' ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold border bg-blue-100 text-blue-800 border-blue-300 inline-flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3" />
+                              <span>Sudah diterima Bagian {activeBagian.nama_bagian}</span>
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold border bg-emerald-100 text-emerald-800 border-emerald-300 inline-flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3" />
+                              <span>DISETUJUI &amp; DITERUSKAN</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center whitespace-nowrap border-r border-slate-200">
+                          <button
+                            onClick={() => {
+                              if (sk.status_persetujuan === 'DITERUSKAN_KE_BAGIAN_TUJUAN') {
+                                tandaiNaskahDiterima(sk.id);
+                              }
+                              onLihatSuratKeluar(sk);
+                            }}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-xs inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Lihat Naskah</span>
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -644,6 +751,7 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                     const f = e.target.files?.[0];
                     if (f) {
                       setFileDraftName(f.name);
+                      setFileDraftObj(f);
                       try {
                         setFileDraftUrl(URL.createObjectURL(f));
                       } catch {
@@ -897,6 +1005,7 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) setFileRevisiName(f.name);
+                      setFileRevisiObj(f);
                     }}
                     className="text-xs text-slate-700 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-purple-100 file:text-purple-700"
                   />

@@ -54,12 +54,18 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
     ? (suratMasuk?.file_pdf || 'berkas_surat_masuk.pdf')
     : (versiDipilih?.nama_file || suratKeluar?.versi_file[suratKeluar.versi_file.length - 1]?.nama_file || 'naskah_surat_keluar.pdf');
 
-  const realFileUrl = isMasuk ? suratMasuk?.file_url : suratKeluar?.file_url;
+  const backendBaseUrl = 'http://localhost:5000'; // Sesuaikan port dengan backend/server.cjs
+  const realFileUrl = isMasuk
+    ? suratMasuk?.file_url
+    : (suratKeluar?.file_url ||
+      (pdfFileName && pdfFileName !== 'naskah_surat_keluar.pdf'
+        ? `${backendBaseUrl}/uploads/surat_keluar/${encodeURIComponent(pdfFileName)}`
+        : undefined));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
-        
+
         {/* Header Modal */}
         <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -121,11 +127,10 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
         <div className="bg-slate-100 border-b border-slate-200 px-6 py-2 flex flex-wrap items-center gap-2 text-sm">
           <button
             onClick={() => setActiveTab('scan_pdf')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
-              activeTab === 'scan_pdf'
+            className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${activeTab === 'scan_pdf'
                 ? 'bg-red-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 bg-white/70'
-            }`}
+              }`}
           >
             <FileSearch className="w-4 h-4 text-inherit" />
             <span>📄 Berkas Scan PDF Asli ({pdfFileName})</span>
@@ -133,11 +138,10 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
 
           <button
             onClick={() => setActiveTab('surat')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
-              activeTab === 'surat'
+            className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${activeTab === 'surat'
                 ? 'bg-white text-emerald-800 shadow-xs border border-slate-200 font-bold'
                 : 'text-slate-600 hover:text-slate-900'
-            }`}
+              }`}
           >
             <FileText className="w-4 h-4 text-emerald-600" />
             <span>Format Naskah Digital</span>
@@ -146,11 +150,10 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
           {isMasuk && disposisi && (
             <button
               onClick={() => setActiveTab('disposisi')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
-                activeTab === 'disposisi'
+              className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${activeTab === 'disposisi'
                   ? 'bg-white text-emerald-800 shadow-xs border border-slate-200 font-bold'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               <UserCheck className="w-4 h-4 text-emerald-600" />
               <span>Lembar Disposisi Kepala Badan</span>
@@ -161,11 +164,10 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
           {!isMasuk && suratKeluar && (
             <button
               onClick={() => setActiveTab('versi')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
-                activeTab === 'versi'
+              className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${activeTab === 'versi'
                   ? 'bg-white text-emerald-800 shadow-xs border border-slate-200 font-bold'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               <Layers className="w-4 h-4 text-emerald-600" />
               <span>Riwayat Versi Berkas ({suratKeluar.versi_file.length} Versi)</span>
@@ -225,7 +227,7 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
               ) : (
                 /* Lembar Pratinjau Scan Fisik Terlampir Berstandar Kedinasan */
                 <div className="relative bg-white shadow-xl border-2 border-slate-300 rounded-2xl p-6 sm:p-10 font-serif text-slate-900 min-h-[600px] overflow-hidden">
-                  
+
                   {/* Watermark Scan Berkas Kedinasan */}
                   <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-5 select-none -rotate-45">
                     <span className="text-6xl sm:text-7xl font-sans font-black tracking-widest text-slate-900 uppercase">
@@ -320,7 +322,7 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
           )}
           {activeTab === 'surat' && (
             <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-xs border border-slate-200 font-sans text-slate-800">
-              
+
               {/* Kop Surat Resmi */}
               <div className="border-b-4 border-double border-slate-900 pb-4 mb-6 text-center relative">
                 <div className="flex items-center justify-center gap-4">
@@ -349,12 +351,11 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
                     </div>
                     <div>
                       <p className="text-slate-500 font-medium">Sifat Surat:</p>
-                      <span className={`inline-block px-2 py-0.5 rounded font-semibold text-xs ${
-                        suratMasuk.sifat === 'Sangat Segera' ? 'bg-red-100 text-red-700' :
-                        suratMasuk.sifat === 'Segera' ? 'bg-amber-100 text-amber-800' :
-                        suratMasuk.sifat === 'Rahasia' ? 'bg-purple-100 text-purple-800' :
-                        'bg-slate-200 text-slate-700'
-                      }`}>
+                      <span className={`inline-block px-2 py-0.5 rounded font-semibold text-xs ${suratMasuk.sifat === 'Sangat Segera' ? 'bg-red-100 text-red-700' :
+                          suratMasuk.sifat === 'Segera' ? 'bg-amber-100 text-amber-800' :
+                            suratMasuk.sifat === 'Rahasia' ? 'bg-purple-100 text-purple-800' :
+                              'bg-slate-200 text-slate-700'
+                        }`}>
                         {suratMasuk.sifat}
                       </span>
                     </div>
@@ -583,19 +584,17 @@ export const ModalPdfViewer: React.FC<ModalPdfViewerProps> = ({
                 {suratKeluar.versi_file.map((vf) => (
                   <div
                     key={vf.id}
-                    className={`p-4 rounded-xl border transition ${
-                      vf.versi_ke === suratKeluar.versi_file.length
+                    className={`p-4 rounded-xl border transition ${vf.versi_ke === suratKeluar.versi_file.length
                         ? 'bg-emerald-50/50 border-emerald-300 ring-1 ring-emerald-400'
                         : 'bg-white border-slate-200'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                          vf.versi_ke === suratKeluar.versi_file.length
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${vf.versi_ke === suratKeluar.versi_file.length
                             ? 'bg-emerald-600 text-white'
                             : 'bg-slate-200 text-slate-700'
-                        }`}>
+                          }`}>
                           Versi {vf.versi_ke} {vf.versi_ke === suratKeluar.versi_file.length && '(Terbaru)'}
                         </span>
                         <span className="text-xs font-mono font-semibold text-slate-700">{vf.nama_file}</span>

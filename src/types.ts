@@ -22,7 +22,8 @@ export type StatusSuratKeluar =
   | 'PENGAJUAN_KE_KEPALA_BADAN'
   | 'REVISI'
   | 'DISETUJUI_KEPALA_BADAN'
-  | 'DITERUSKAN_KE_BAGIAN_TUJUAN';
+  | 'DITERUSKAN_KE_BAGIAN_TUJUAN'
+  | 'DITERIMA_BAGIAN_TUJUAN';
 
 export interface User {
   id: number;
@@ -65,6 +66,8 @@ export interface SuratMasuk {
   perihal: string;
   sifat: SifatSurat;
   file_pdf: string;
+  file_name?: string;
+  file_url?: string;
   id_kategori: number;
   nama_kategori?: string;
   id_petugas_loket: number;
@@ -130,6 +133,8 @@ export interface SuratKeluar {
   tgl_dibuat: string;
   tgl_disetujui?: string;
   versi_file: SuratKeluarVersiFile[];
+  file_url?: string;
+  file_pdf?: string;
 }
 
 export interface LogAktivitas {
