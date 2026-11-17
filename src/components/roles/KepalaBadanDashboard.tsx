@@ -5,7 +5,7 @@
  * Responsif untuk semua perangkat (iOS, Android, Windows, Mac)
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import LOGO_KOTA_BITUNG_SULAWESI_UTARA from '../../assets/LOGO_KOTA_BITUNG_SULAWESI_UTARA.png'
 import { usePersuratan } from '../../context/PersuratanContext';
 import { SuratMasuk, SuratKeluar } from '../../types';
@@ -13,26 +13,15 @@ import {
   Crown,
   CheckCircle,
   Clock,
-  Briefcase,
   Eye,
-  FileCheck2,
-  AlertTriangle,
   RotateCcw,
-  Send,
-  Building,
-  UserCheck,
-  Calendar,
-  Layers,
-  ArrowRight,
-  Sparkles,
-  FileText,
-  Filter,
   Search,
   BarChart3,
   Download,
   Printer
 
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 interface KepalaBadanDashboardProps {
   onLihatSuratMasuk: (surat: SuratMasuk) => void;
@@ -61,20 +50,26 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
 
 
   const [internalTab, setInternalTab] = useState<string>('surat_masuk');
-  const [statusFilter, setStatusFilter] = useState<'semua' | 'menunggu' | 'terverifikasi' | 'dikembalikan'>('semua');
+  const [statusFilter, setStatusFilter] = useState<string>('menunggu');
   const [searchQuery, setSearchQuery] = useState('');
-
   const currentView = externalActiveMenu || internalTab;
 
   const handleTabChange = (view: string) => {
     setInternalTab(view);
     onSelectMenu?.(view);
   };
+  useEffect(() => {
+    if (currentView === 'surat_masuk') {
+      setStatusFilter('menunggu');
+    }
+  }, [currentView]);
 
   // Modal Lembar Disposisi Digital
   const [modalDisposisiOpen, setModalDisposisiOpen] = useState(false);
   const [targetSuratDisposisi, setTargetSuratDisposisi] = useState<SuratMasuk | null>(null);
   const [selectedBagianTujuan, setSelectedBagianTujuan] = useState<number>(bagianList[1]?.id || 2);
+  const [checkedPenerima, setCheckedPenerima] = useState<string[]>([]);
+  const [instansiTerkait, setInstansiTerkait] = useState<string>('');
   const [selectedInstruksi, setSelectedInstruksi] = useState<string[]>([]);
   const [catatanKepala, setCatatanKepala] = useState('');
 
@@ -82,6 +77,28 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
   const [modalRevisiKeluarOpen, setModalRevisiKeluarOpen] = useState(false);
   const [targetSuratRevisi, setTargetSuratRevisi] = useState<SuratKeluar | null>(null);
   const [catatanRevisiKeluar, setCatatanRevisiKeluar] = useState('');
+
+  const [penerimaTerpilih, setPenerimaTerpilih] = useState<string[]>([]);
+
+
+  const togglePenerima = (jabatan: string) => {
+    setPenerimaTerpilih((prev) =>
+      prev.includes(jabatan)
+        ? prev.filter((item) => item !== jabatan)
+        : [...prev, jabatan]
+    );
+  };
+
+  const formatTanggalIndo = (tgl?: string) => {
+    if (!tgl) return '-';
+    const date = new Date(tgl);
+    if (isNaN(date.getTime())) return tgl;
+    return date.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  };
 
   // Perhitungan Status Persuratan
   const menungguDisposisi = suratMasukList.filter(
@@ -190,6 +207,10 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
       alert('Pilihlah setidaknya satu instruksi petunjuk disposisi.');
       return;
     }
+    if (checkedPenerima.length === 0 || !selectedBagianTujuan) {
+      alert('Silakan pilih minimal 1 tujuan pada bagian "Diteruskan Kepada Sdr." terlebih dahulu.');
+      return;
+    }
 
     buatDisposisi(
       targetSuratDisposisi.id,
@@ -221,96 +242,276 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
     alert(`Konsep naskah ${targetSuratRevisi.no_draft} dikembalikan ke Kepala Bagian dengan catatan revisi.`);
   };
 
+  // Helper membaca indeks bulan (0 = Jan ... 11 = Des) dari tanggal database
+  const getBulanIndex = (rawDate?: string): number | null => {
+    if (!rawDate) return null;
+    const str = String(rawDate).trim();
+    const tahunSekarang = new Date().getFullYear();
+
+    // 1. Format ISO / SQL: "2026-11-18..."
+    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const tahun = Number(isoMatch[1]);
+      const bulan = Number(isoMatch[2]) - 1;
+      return tahun === tahunSekarang && bulan >= 0 && bulan <= 11 ? bulan : null;
+    }
+
+    // 2. Format teks Indonesia: "17 Nov 2026 • 19:07 WITA"
+    const namaBulan = ['jan', 'feb', 'mar', 'apr', 'mei', 'jun', 'jul', 'agu', 'sep', 'okt', 'nov', 'des'];
+    const lower = str.toLowerCase();
+    if (!lower.includes(String(tahunSekarang))) return null;
+
+    for (let i = 0; i < namaBulan.length; i++) {
+      if (lower.includes(namaBulan[i])) return i;
+    }
+    return null;
+  };
+
+  // Hitung rekap 12 bulan otomatis dari database (mulai dari 0)
+  const rekapBulananDb = useMemo(() => {
+    const daftarBulan = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+
+    const hasil = daftarBulan.map((nama) => ({
+      bulan: nama,
+      masuk: 0,
+      keluar: 0,
+      disposisi: 0,
+      selesai: 0,
+    }));
+
+    suratMasukList.forEach((sm: any) => {
+      const idx = getBulanIndex(sm.tgl_input || sm.created_at || sm.tgl_surat);
+      if (idx !== null) {
+        hasil[idx].masuk += 1;
+        if (sm.disposisi) hasil[idx].disposisi += 1;
+        if (sm.status_surat === 'ARSIP' || sm.status_surat === 'SELESAI' || sm.disposisi) {
+          hasil[idx].selesai += 1;
+        }
+      }
+    });
+
+    suratKeluarList.forEach((sk: any) => {
+      const idx = getBulanIndex(sk.tgl_dibuat || sk.created_at);
+      if (idx !== null) {
+        hasil[idx].keluar += 1;
+        if (sk.status_persetujuan === 'DISETUJUI_KEPALA_BADAN') {
+          hasil[idx].selesai += 1;
+        }
+      }
+    });
+
+    return hasil.map((item) => {
+      const total = item.masuk + item.keluar;
+      return {
+        bulan: item.bulan,
+        masuk: item.masuk,
+        keluar: item.keluar,
+        disposisi: item.disposisi,
+        rasio: total > 0 ? Math.round((item.selesai / total) * 100) : 0,
+      };
+    });
+  }, [suratMasukList, suratKeluarList]);
+
+
   return (
-    <div className="space-y-6">
-
-      {/* Subheader */}
-      <div className="p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-amber-100 rounded-xl text-amber-700 border border-amber-200 shrink-0">
-            <Crown className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-              Dashboard Eksekutif Kepala BKPSDMD
-            </h1>
-            <p className="text-xs text-slate-500">
-              Penerbitan Lembar Disposisi Digital &amp; Persetujuan Naskah Dinas Internal
-            </p>
-          </div>
-        </div>
-
-        {/* Tab Selector */}
-        <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold gap-1 self-start md:self-auto">
-          <button
-            onClick={() => handleTabChange('surat_masuk')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${currentView === 'surat_masuk' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Daftar Surat Masuk</span>
-            <span className='w-5 h-5 bg-red-600 rounded-full text-[10px] text-white font-extrabold inline-flex items-center justify-center loading-none'>{suratMasukList.length}</span>
-          </button>
-
-          <button
-            onClick={() => handleTabChange('persetujuan_keluar')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${currentView === 'persetujuan_keluar' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-          >
-            <FileCheck2 className="w-3.5 h-3.5" />
-            <span>Draft Surat Keluar</span>
-            {suratKeluarMenungguApproval.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px]">
-                {suratKeluarMenungguApproval.length}
-              </span>
-            )}
-          </button>
-        </div>
-      </div>
+    <div className="space-y-1">
+      {currentView === 'eksekutif' && (
+        <>
+          <h1 className="text-[28px] font-black text-slate-900 tracking-tight">
+            DASHBOARD KEPALA BKPSDMD KOTA BITUNG
+          </h1>
+          <p className="text-xs text-slate-500 mb-1.5">
+            Pemantauan arus surat masuk, disposisi, dan kinerja persuratan secara real-time
+          </p>
+        </>
+      )}
 
       {
         currentView === 'eksekutif' && (() => {
+
+
+
           // Data rekapitulasi 12 bulan
-          const rekapitulasiBulanan = [
-            { bulan: 'Januari', masuk: 24, keluar: 18, disposisi: 22 },
-            { bulan: 'Februari', masuk: 31, keluar: 22, disposisi: 29 },
-            { bulan: 'Maret', masuk: 28, keluar: 20, disposisi: 26 },
-            { bulan: 'April', masuk: 35, keluar: 27, disposisi: 33 },
-            { bulan: 'Mei', masuk: 29, keluar: 21, disposisi: 28 },
-            { bulan: 'Juni', masuk: 42, keluar: 30, disposisi: 39 },
-            { bulan: 'Juli', masuk: 38, keluar: 25, disposisi: 35 },
-            { bulan: 'Agustus', masuk: 45, keluar: 34, disposisi: 41 },
-            { bulan: 'September', masuk: 39, keluar: 28, disposisi: 37 },
-            { bulan: 'Oktober', masuk: 48, keluar: 36, disposisi: 44 },
-            { bulan: 'November', masuk: suratMasukList.length, keluar: suratKeluarList.length, disposisi: suratMasukList.filter((s: any) => s.disposisi).length },
-            { bulan: 'Desember', masuk: 0, keluar: 0, disposisi: 0 }
-          ];
+          const rekapitulasiBulanan = rekapBulananDb;
 
           const maxChartValue = Math.max(...rekapitulasiBulanan.map((r: any) => Math.max(r.masuk, r.keluar, r.disposisi))) || 50;
 
-          // Fungsi Ekspor CSV / Excel
-          const handleExportCSV = () => {
-            const csvRows = [
-              ['Bulan Pelaporan', 'Surat Masuk (Registrasi)', 'Surat Keluar Internal', 'Disposisi Diterbitkan', 'Rasio Penyelesaian'],
-              ...rekapitulasiBulanan.map((r) => {
+
+          const handleExportPDF = () => {
+            const tahun = new Date().getFullYear();
+            const totalMasuk = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.masuk || 0), 0);
+            const totalKeluar = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.keluar || 0), 0);
+            const totalDisposisi = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.disposisi || 0), 0);
+            const totalRasio = totalMasuk > 0 ? Math.round((totalDisposisi / totalMasuk) * 100) : 0;
+
+            const rowsHtml = rekapitulasiBulanan
+              .map((r: any, idx: number) => {
                 const rasio = r.masuk > 0 ? Math.round((r.disposisi / r.masuk) * 100) : 0;
-                return [r.bulan, r.masuk, r.keluar, r.disposisi, `${rasio}%`];
+                return `
+        <tr>
+          <td style="text-align:center;">${idx + 1}</td>
+          <td>${r.bulan}</td>
+          <td style="text-align:center;">${r.masuk}</td>
+          <td style="text-align:center;">${r.keluar}</td>
+          <td style="text-align:center;">${r.disposisi}</td>
+          <td style="text-align:center;">${rasio}%</td>
+        </tr>
+      `;
               })
-            ];
-            const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map((e: any) => e.join(',')).join('\n');
-            const encodedUri = encodeURI(csvContent);
+              .join('');
+            const logoUrl = new URL(LOGO_KOTA_BITUNG_SULAWESI_UTARA, window.location.origin).href;
+            const printWindow = window.open('', '_blank', 'width=900,height=700');
+            if (!printWindow) return;
+
+            printWindow.document.write(`
+    <html>
+      <head>
+        <title>Laporan Rekapitulasi Persuratan BKPSDMD ${tahun}</title>
+        <style>
+          @page { size: A4; margin: 16mm; }
+          body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; }
+          .kop { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 18px; }
+          .kop h2 { margin: 0; font-size: 14pt; }
+          .kop h3 { margin: 2px 0; font-size: 12pt; }
+          .kop p { margin: 4px 0 0; font-size: 10pt; color: #475569; }
+          table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px 10px; }
+          th { background-color: #047857; color: #ffffff; }
+          tfoot td { background-color: #f1f5f9; font-weight: bold; }
+          .ttd { margin-top: 36px; float: right; width: 240px; text-align: left; font-size: 10pt; }
+        </style>
+      </head>
+      <body>
+        <div class="kop">
+        <img
+    src="${logoUrl}"
+    alt="Logo Kota Bitung"
+    style="height: 64px; width: auto; display: block; margin: 0 auto 8px auto;"
+  />
+          <h3>
+          PEMERINTAH KOTA BITUNG
+          </h3>
+          <h2>BADAN KEPEGAWAIAN DAN PENGEMBANGAN SUMBER DAYA MANUSIA DAERAH</h2>
+          <p>Laporan Rekapitulasi Aktivitas Persuratan Digital — Tahun ${tahun}</p>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>Bulan Pelaporan</th>
+              <th>Surat Masuk</th>
+              <th>Surat Keluar</th>
+              <th>Disposisi</th>
+              <th>Rasio Selesai</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2" style="text-align:center;">TOTAL</td>
+              <td style="text-align:center;">${totalMasuk}</td>
+              <td style="text-align:center;">${totalKeluar}</td>
+              <td style="text-align:center;">${totalDisposisi}</td>
+              <td style="text-align:center;">${totalRasio}%</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div class="ttd">
+          <p>Bitung, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}<br/>Kepala BKPSDMD Kota Bitung,</p>
+          <br/><br/><br/>
+          <p><strong>______________________________</strong></p>
+        </div>
+      </body>
+    </html >
+  `);
+
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+              printWindow.print();
+              printWindow.close();
+            }, 300);
+          };
+
+          // Fungsi Ekspor Excel (.xls)
+          const handleExportExcel = () => {
+            const tahun = new Date().getFullYear();
+            const totalMasuk = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.masuk || 0), 0);
+            const totalKeluar = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.keluar || 0), 0);
+            const totalDisposisi = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.disposisi || 0), 0);
+            const totalRasio = totalMasuk > 0 ? Math.round((totalDisposisi / totalMasuk) * 100) : 0;
+
+            const rowsHtml = rekapitulasiBulanan
+              .map((r: any, idx: number) => {
+                const rasio = r.masuk > 0 ? Math.round((r.disposisi / r.masuk) * 100) : 0;
+                return `
+                  <tr>
+                    <td style="text-align:center;">${idx + 1}</td>
+                    <td>${r.bulan}</td>
+                    <td style="text-align:center;">${r.masuk || 0}</td>
+                    <td style="text-align:center;">${r.keluar || 0}</td>
+                    <td style="text-align:center;">${r.disposisi || 0}</td>
+                    <td style="text-align:center;">${rasio}%</td>
+                  </tr>
+                `;
+              })
+              .join('');
+
+            const htmlTable = `
+              <html xmlns:o="urn:schemas-microsoft-com:office:office"
+                    xmlns:x="urn:schemas-microsoft-com:office:excel"
+                    xmlns="http://www.w3.org/TR/REC-html40">
+                <head><meta charset="UTF-8" /></head>
+                <body>
+                  <h3>REKAPITULASI PERSURATAN BKPSDMD KOTA BITUNG — TAHUN ${tahun}</h3>
+                  <table border="1">
+                    <thead>
+                      <tr style="background-color:#047857; color:#ffffff; font-weight:bold;">
+                        <th>No</th>
+                        <th>Bulan Pelaporan</th>
+                        <th>Surat Masuk</th>
+                        <th>Surat Keluar Internal</th>
+                        <th>Disposisi Diterbitkan</th>
+                        <th>Rasio Penyelesaian</th>
+                      </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                    <tfoot>
+                      <tr style="background-color:#f1f5f9; font-weight:bold;">
+                        <td colspan="2" style="text-align:center;">TOTAL</td>
+                        <td style="text-align:center;">${totalMasuk}</td>
+                        <td style="text-align:center;">${totalKeluar}</td>
+                        <td style="text-align:center;">${totalDisposisi}</td>
+                        <td style="text-align:center;">${totalRasio}%</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </body>
+              </html>
+            `;
+
+            const blob = new Blob([htmlTable], {
+              type: 'application/vnd.ms-excel;charset=utf-8;',
+            });
+            const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.setAttribute('href', encodedUri);
-            link.setAttribute('download', 'rekapitulasi_persuratan_admin_2026.csv');
-            document.body.appendChild(link);
+            link.href = url;
+            link.download = `Rekapitulasi_Persuratan_BKPSDMD_${tahun}.xls`;
             link.click();
-            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
           };
 
 
           return (
 
+
+
             <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-6">
+              {/* HEADER & SUBHEADER (Hanya muncul di Dashboard Eksekutif) */}
+
               {/* Header Tab & Tombol Aksi (Cetak + Ekspor CSV) */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div className="mb-6">
@@ -319,24 +520,24 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
                     <span>Rekapitulasi Persuratan BKPSDMD Kota Bitung</span>
                   </h2>
                   <p className="text-xs text-slate-500 mt-1">
-                    Grafik komparasi 3 metrik tata kelola: Surat Masuk, Surat Keluar Internal, dan Lembar Disposisi Kepala Badan
+                    Grafik tata kelola: Surat Masuk, Surat Keluar Internal, dan Lembar Disposisi Kepala Badan
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2 ml-auto">
                   <button
-                    onClick={() => window.print()}
-                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-200 transition cursor-pointer"
+                    onClick={handleExportPDF}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
                   >
                     <Printer className="w-3.5 h-3.5" />
-                    <span>Cetak Laporan</span>
+                    <span>Ekspor PDF</span>
                   </button>
                   <button
-                    onClick={handleExportCSV}
+                    onClick={handleExportExcel}
                     className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Ekspor CSV/Excel</span>
+                    <span>Ekspor Excel</span>
                   </button>
                 </div>
               </div>
@@ -394,19 +595,19 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
                       <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
                         <div className="w-full flex items-end justify-center gap-0.5 sm:gap-1 h-full">
                           <div
-                            style={{ height: `${pctMasuk}%` }}
+                            style={{ height: `${pctMasuk}% ` }}
                             className="w-1.5 sm:w-2.5 bg-blue-500 rounded-t-xs hover:bg-blue-600 transition"
-                            title={`Surat Masuk: ${item.masuk}`}
+                            title={`Surat Masuk: ${item.masuk} `}
                           />
                           <div
-                            style={{ height: `${pctKeluar}%` }}
+                            style={{ height: `${pctKeluar}% ` }}
                             className="w-1.5 sm:w-2.5 bg-purple-500 rounded-t-xs hover:bg-purple-600 transition"
-                            title={`Surat Keluar: ${item.keluar}`}
+                            title={`Surat Keluar: ${item.keluar} `}
                           />
                           <div
-                            style={{ height: `${pctDisposisi}%` }}
+                            style={{ height: `${pctDisposisi}% ` }}
                             className="w-1.5 sm:w-2.5 bg-emerald-500 rounded-t-xs hover:bg-emerald-600 transition"
-                            title={`Disposisi: ${item.disposisi}`}
+                            title={`Disposisi: ${item.disposisi} `}
                           />
                         </div>
                         <span className="text-[10px] text-slate-500 font-mono mt-2 truncate w-full text-center">
@@ -427,11 +628,11 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
                   <table className="w-full text-left text-xs border-collapse border border-slate-200 rounded-xl overflow-hidden">
                     <thead>
                       <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                        <th className="py-2.5 px-3">Bulan Pelaporan</th>
-                        <th className="py-2.5 px-3 text-center">Surat Masuk (Registrasi)</th>
-                        <th className="py-2.5 px-3 text-center">Surat Keluar Internal</th>
-                        <th className="py-2.5 px-3 text-center">Disposisi Diterbitkan</th>
-                        <th className="py-2.5 px-3 text-center">Rasio Penyelesaian</th>
+                        <th className="py-2.5 px-3 text-center border-l border-r border-slate-200">Bulan Pelaporan</th>
+                        <th className="py-2.5 px-3 text-center border-r border-slate-200">Surat Masuk (Registrasi)</th>
+                        <th className="py-2.5 px-3 text-center border-r border-slate-200">Surat Keluar Internal</th>
+                        <th className="py-2.5 px-3 text-center border-r border-slate-200">Disposisi Diterbitkan</th>
+                        <th className="py-2.5 px-3 text-center border-r border-slate-200">Rasio Penyelesaian</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -439,18 +640,18 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
                         const rasio = row.masuk > 0 ? Math.round((row.disposisi / row.masuk) * 100) : 0;
                         return (
                           <tr key={i} className="hover:bg-slate-50 transition">
-                            <td className="py-2 px-3 font-semibold text-slate-900">{row.bulan}</td>
-                            <td className="py-2 px-3 text-center font-mono">{row.masuk}</td>
-                            <td className="py-2 px-3 text-center font-mono">{row.keluar}</td>
-                            <td className="py-2 px-3 text-center font-mono">{row.disposisi}</td>
-                            <td className="py-2 px-3 text-center">
+                            <td className="py-2 px-3 font-semibold text-slate-900 border-l border-r border-slate-200">{row.bulan}</td>
+                            <td className="py-2 px-3 text-center font-mono border-r border-slate-200">{row.masuk}</td>
+                            <td className="py-2 px-3 text-center font-mono border-r border-slate-200">{row.keluar}</td>
+                            <td className="py-2 px-3 text-center font-mono border-r border-slate-200">{row.disposisi}</td>
+                            <td className="py-2 px-3 text-center border-r border-slate-200">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rasio >= 90
+                                className={`px - 2 py - 0.5 rounded - full text - [10px] font - bold ${rasio >= 90
                                   ? 'bg-emerald-100 text-emerald-800'
                                   : rasio >= 70
                                     ? 'bg-blue-100 text-blue-800'
                                     : 'bg-slate-100 text-slate-600'
-                                  }`}
+                                  } `}
                               >
                                 {rasio}% Selesai
                               </span>
@@ -472,127 +673,104 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
       {/* 1. VIEW: DASHBOARD EKSEKUTIF / LIVE TRACKING */}
       {
         currentView === 'eksekutif' && (
+          <div className="space-y-6">
 
-          <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
-            {/* 4 STAT CARDS EKSEKUTIF (Sesuai Desain Figma) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
 
-              {/* Card 1: Menunggu Disposisi */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between min-h-[110px]">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Menunggu Disposisi
-                </span>
-                <p className="text-3xl font-black text-slate-900 mt-2">
-                  {totalMenungguDisposisi}
-                </p>
+            {/* TABEL PEMANTAUAN POSISI SURAT REAL-TIME */}
+            <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-lg border border-slate-200 space-y-4">
+              <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                    <span>TABEL PEMANTAUAN POSISI SURAT REAL-TIME</span>
+                  </h3>
+                </div>
               </div>
 
-              {/* Card 2: Diproses Bidang */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between min-h-[110px]">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Diproses Bidang
-                </span>
-                <p className="text-3xl font-black text-slate-900 mt-2">
-                  {totalDiprosesBidang}
-                </p>
+              <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+                <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
+                      <th className="py-3 px-3 text-center border-l border-r border-slate-200">No. Agenda</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Nama / Asal Surat</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Sifat</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Posisi Terakhir Berkas</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Waktu Pembaruan Presisi</th>
+                      <th className="py-3 px-3 text-center border-r border-slate-200">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700 overflow-hidden">
+                    {suratMasukList.map((surat) => {
+                      const posisi = getPosisiTerakhir(surat);
+                      return (
+                        <tr key={surat.id} className="hover:bg-slate-50/80 transition overflow-hidden">
+                          <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap text-center border-l border-r border-slate-200">
+                            {surat.no_agenda}
+                          </td>
+                          <td className="py-3 px-3 max-w-[180px] overflow-hidden whitespace-nowrap text-center border-r border-slate-200">
+                            {/* Nama / Asal Surat */}
+                            <div className="w-full overflow-hidden breakwords whitespace-normal">
+                              <p className="font-bold text-slate-900 inline-block whitespace-nowrap">
+                                {surat.asal_surat}
+                              </p>
+                            </div>
+
+                            {/* Perihal Surat */}
+                            <div className="w-full overflow-hidden whitespace-nowrap group cursor-pointer">
+                              <p className="text-[11px] text-slate-600 italic inline-block whitespace-nowrap hover-marquee">
+                                "{surat.perihal}"
+                              </p>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
+                            <span className="px-2 py-0.5 rounded font-semibold text-[11px] bg-slate-100 text-slate-700">
+                              {surat.sifat}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center border-r border-slate-200">
+                            <span className={`px - 2.5 py - 1 rounded - full text - [11px] font - semibold border whitespace - nowrap ${posisi.color} `}>
+                              {posisi.text}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
+                            {surat.tgl_input ? (
+                              <div className="flex flex-col items-center leading-tight">
+                                <span className="font-semibold text-slate-700 text-[11.5px]">
+                                  {new Date(surat.tgl_input).toLocaleDateString('id-ID', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric',
+                                    timeZone: 'Asia/Makassar',
+                                  })}
+                                </span>
+                                <span className="font-mono text-[10.5px] text-slate-500 mt-0.5">
+                                  {new Date(surat.tgl_input).toLocaleTimeString('id-ID', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    timeZone: 'Asia/Makassar',
+                                  })}{' '}
+                                  WITA
+                                </span>
+                              </div>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap space-x-1.5 text-center border-r border-slate-200">
+                            <button
+                              onClick={() => onLihatSuratMasuk(surat)}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Lihat</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-
-              {/* Card 3: Selesai */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between min-h-[110px]">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Selesai
-                </span>
-                <p className="text-3xl font-black text-slate-900 mt-2">
-                  {totalSelesai}
-                </p>
-              </div>
-
-              {/* Card 4: Surat Keluar */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between min-h-[110px]">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Surat Keluar
-                </span>
-                <p className="text-3xl font-black text-slate-900 mt-2">
-                  {totalSuratKeluar}
-                </p>
-              </div>
-
-            </div>
-            <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                  <span>Tabel Pemantauan Posisi Surat Real-Time</span>
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Pimpinan dapat memantau secara presisi di meja kerja mana berkas persuratan berada sekarang.
-                </p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-              <table className="w-full text-left text-xs border-collapse min-w-[700px]">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                    <th className="py-3 px-3 text-center border-l border-r border-slate-200">No. Agenda</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Nama / Asal Surat</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Sifat</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Posisi Terakhir Berkas</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Waktu Pembaruan Presisi</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700 overflow-hidden">
-                  {suratMasukList.map((surat) => {
-                    const posisi = getPosisiTerakhir(surat);
-                    return (
-                      <tr key={surat.id} className="hover:bg-slate-50/80 transition overflow-hidden">
-                        <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap text-center border-l border-r border-slate-200">
-                          {surat.no_agenda}
-                        </td>
-                        <td className="py-3 px-3 max-w-[180px] overflow-hidden whitespace-nowrap text-center border-r border-slate-200">
-                          {/* Nama / Asal Surat */}
-                          <div className="w-full overflow-hidden breakwords whitespace-normal">
-                            <p className="font-bold text-slate-900 inline-block whitespace-nowrap">
-                              {surat.asal_surat}
-                            </p>
-                          </div>
-
-
-                          {/* Perihal Surat */}
-                          <div className="w-full overflow-hidden whitespace-nowrap group cursor-pointer">
-                            <p className="text-[11px] text-slate-600 italic inline-block whitespace-nowrap hover-marquee">
-                              "{surat.perihal}"
-                            </p>
-                          </div>
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
-                          <span className="px-2 py-0.5 rounded font-semibold text-[11px] bg-slate-100 text-slate-700">
-                            {surat.sifat}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-center border-r border-slate-200">
-                          <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border whitespace-nowrap ${posisi.color}`}>
-                            {posisi.text}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 font-mono text-slate-500 whitespace-nowrap text-center border-r border-slate-200">
-                          {surat.tgl_input}
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap space-x-1.5 text-center border-r border-slate-200">
-                          <button
-                            onClick={() => onLihatSuratMasuk(surat)}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition inline-flex items-center gap-1 cursor-pointer"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>Lihat</span>
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
           </div>
         )
@@ -615,7 +793,7 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>Menunggu Disposisi</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-200 text-amber-950 font-mono font-bold">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-200 text-amber-950 font-mono font-bold">
                   {menungguDisposisi.length}
                 </span>
               </button>
@@ -630,7 +808,7 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
               >
                 <CheckCircle className="w-3.5 h-3.5" />
                 <span>Didisposisi / Selesai</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-200 text-emerald-950 font-mono font-bold">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-200 text-emerald-950 font-mono font-bold">
                   {terverifikasiList.length}
                 </span>
               </button>
@@ -645,7 +823,7 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Salah Sasaran Disposisi</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-200 text-rose-950 font-mono font-bold">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-200 text-rose-950 font-mono font-bold">
                   {dikembalikanBagianList.length}
                 </span>
               </button>
@@ -659,7 +837,10 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
                   }`}
               >
                 <span>Semua Surat Masuk</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono hover:bg-slate-200 ${statusFilter === 'semua' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${statusFilter === 'semua' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                >
                   {suratMasukList.length}
                 </span>
               </button>
@@ -741,7 +922,7 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
                             {surat.status_surat.replace(/_/g, ' ')}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-right whitespace-nowrap space-x-1.5 text-center border-r border-slate-200">
+                        <td className="py-3 px-3 whitespace-nowrap space-x-1.5 text-center border-r border-slate-200">
                           <button
                             onClick={() => onLihatSuratMasuk(surat)}
                             className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition inline-flex items-center gap-1 cursor-pointer"
@@ -789,87 +970,121 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
               </span>
             </div>
 
-            <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-              <table className="w-full text-left text-xs border-collapse min-w-[700px]">
-                <thead>
+            <div className="max-h-[calc(100vh-260px)] overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200">
+              <table className="w-full table-fixed text-xs border-collapse">
+                <thead className="sticky top-0 z-10 bg-slate-50 shadow-2xs">
                   <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                    <th className="py-3 px-3 text-center border-l border-r border-slate-200">No. Draft</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Jenis &amp; Perihal</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Pengirim</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Tujuan</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Versi File</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Status Approval</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Aksi Pimpinan</th>
+                    <th className="w-[17%] py-3 px-2.5 text-center border-r border-slate-200 bg-slate-50">
+                      No. Draft
+                    </th>
+                    <th className="w-[18%] py-3 px-2.5 text-center border-r border-slate-200 bg-slate-50">
+                      Jenis &amp; Perihal
+                    </th>
+                    <th className="w-[13%] py-3 px-2.5 text-center border-r border-slate-200 bg-slate-50">
+                      Bagian Pengirim
+                    </th>
+                    <th className="w-[13%] py-3 px-2.5 text-center border-r border-slate-200 bg-slate-50">
+                      Bagian Tujuan
+                    </th>
+                    <th className="w-[9%] py-3 px-2 text-center border-r border-slate-200 bg-slate-50">
+                      Versi File
+                    </th>
+                    <th className="w-[16%] py-3 px-2.5 text-center border-r border-slate-200 bg-slate-50">
+                      Status Approval
+                    </th>
+                    <th className="w-[14%] py-3 px-2 text-center bg-slate-50">
+                      Aksi Pimpinan
+                    </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
+                <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
                   {suratKeluarList.map((sk) => {
                     const daftarVersi = Array.isArray(sk.versi_file) ? sk.versi_file : [];
                     const versiTerbaru = daftarVersi.length > 0 ? daftarVersi[daftarVersi.length - 1] : null;
                     const statusApproval = sk.status_persetujuan || 'PENGAJUAN_KE_KEPALA_BADAN';
                     const isMenungguApproval = statusApproval === 'PENGAJUAN_KE_KEPALA_BADAN';
+
                     return (
-                      <tr key={sk.id} className="hover:bg-slate-50/80 transition">
-                        <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap text-center border-l border-r border-slate-200">
+                      <tr key={sk.id} className="hover:bg-slate-50/80 transition align-middle">
+                        {/* 1. NO. DRAFT (17%) */}
+                        <td className="py-3 px-2.5 font-mono font-bold text-[11px] text-slate-900 break-words leading-snug text-center border-r border-slate-200">
                           {sk.no_draft}
                         </td>
-                        <td className="py-3 px-3 max-w-sm text-center border-r border-slate-200">
-                          <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-slate-100 text-slate-700">
+
+                        {/* 2. JENIS & PERIHAL (18%) */}
+                        <td className="py-3 px-2.5 text-center border-r border-slate-200">
+                          <span className="inline-block px-2 py-0.5 rounded font-bold text-[10px] bg-slate-100 text-slate-700 leading-snug">
                             {sk.jenis_naskah}
                           </span>
-                          <p className="font-bold text-slate-900 mt-1">{sk.perihal}</p>
-                          <p className="text-[11px] text-slate-500 italic line-clamp-1">"{sk.isi_ringkas}"</p>
+                          <p className="font-bold text-slate-900 mt-1 leading-snug break-words">
+                            {sk.perihal}
+                          </p>
+                          <p className="text-[11px] text-slate-500 italic line-clamp-1 mt-0.5">
+                            "{sk.isi_ringkas}"
+                          </p>
                         </td>
-                        <td className="py-3 px-3 font-semibold text-purple-900 whitespace-normal text-center border-r border-slate-200">
+
+                        {/* 3. BAGIAN PENGIRIM (13%) */}
+                        <td className="py-3 px-2.5 font-semibold text-purple-900 break-words leading-snug text-center border-r border-slate-200">
                           {sk.nama_bagian_pengirim}
                         </td>
-                        <td className="py-3 px-3 font-semibold text-slate-800 whitespace-normal text-center border-r border-slate-200">
+
+                        {/* 4. BAGIAN TUJUAN (13%) */}
+                        <td className="py-3 px-2.5 font-semibold text-slate-800 break-words leading-snug text-center border-r border-slate-200">
                           {sk.nama_bagian_tujuan}
                         </td>
-                        <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
-                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-800 font-bold border border-slate-200">
+
+                        {/* 5. VERSI FILE (9%) */}
+                        <td className="py-3 px-2 text-center border-r border-slate-200">
+                          <span className="inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px] border border-slate-200">
                             Versi {versiTerbaru ? versiTerbaru.versi_ke : 1}
                           </span>
                         </td>
-                        <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
+
+                        {/* 6. STATUS APPROVAL (16%) */}
+                        <td className="py-3 px-2.5 text-center border-r border-slate-200">
                           <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusApproval === 'DISETUJUI_KEPALA_BADAN'
+                            className={`inline - block px - 2.5 py - 1 rounded - lg text - [10px] font - bold leading - tight whitespace - normal break-words border ${statusApproval === 'DISETUJUI_KEPALA_BADAN'
                               ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                               : statusApproval === 'REVISI'
                                 ? 'bg-red-100 text-red-800 border-red-300'
                                 : 'bg-amber-100 text-amber-800 border-amber-300'
-                              }`}
+                              } `}
                           >
                             {statusApproval.replace(/_/g, ' ')}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-right whitespace-nowrap space-x-1.5 text-center border-r border-slate-200">
-                          <button
-                            onClick={() => onLihatSuratKeluar(sk)}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold cursor-pointer"
-                          >
-                            Pratinjau Draft
-                          </button>
 
-                          {isMenungguApproval && (
-                            <>
-                              <button
-                                onClick={() => handleOpenRevisiKeluar(sk)}
-                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg font-semibold cursor-pointer"
-                              >
-                                Revisi
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setujuiSuratKeluar(sk.id);
-                                  alert(`Konsep surat keluar ${sk.no_draft} telah disetujui Kepala Badan!`);
-                                }}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-xs cursor-pointer"
-                              >
-                                Setujui (Approve)
-                              </button>
-                            </>
-                          )}
+                        {/* 7. AKSI PIMPINAN (14%) */}
+                        <td className="py-3 px-2 text-center">
+                          <div className="flex flex-col items-center justify-center gap-1">
+                            <button
+                              onClick={() => onLihatSuratKeluar(sk)}
+                              className="w-full max-w-[125px] px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-[11px] leading-tight cursor-pointer"
+                            >
+                              Pratinjau Draft
+                            </button>
+
+                            {isMenungguApproval && (
+                              <>
+                                <button
+                                  onClick={() => handleOpenRevisiKeluar(sk)}
+                                  className="w-full max-w-[125px] px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg font-semibold text-[11px] leading-tight cursor-pointer"
+                                >
+                                  Revisi
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setujuiSuratKeluar(sk.id);
+                                    alert(`Konsep surat keluar ${sk.no_draft} telah disetujui Kepala Badan!`);
+                                  }}
+                                  className="w-full max-w-[125px] px-2 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[11px] leading-tight shadow-xs cursor-pointer"
+                                >
+                                  Setujui (Approve)
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -882,369 +1097,329 @@ export const KepalaBadanDashboard: React.FC<KepalaBadanDashboardProps> = ({
       }
 
       {/* Modal Lembar Disposisi Digital - Format Resmi Template Badan BKPSDMD Kota Bitung */}
-      {
-        modalDisposisiOpen && targetSuratDisposisi && (
-          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-2 sm:p-4 z-50 overflow-y-auto">
-            <div className="bg-white rounded-xl max-w-3xl w-full shadow-2xl border border-slate-300 my-4 animate-scale-up overflow-hidden print:shadow-none print:border-slate-400">
+      {modalDisposisiOpen && targetSuratDisposisi && createPortal(
+        <div
+          style={{ zIndex: 9999 }}
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-3 md:p-4 z-[9999]"
+        >
+          <div className="bg-white rounded-xl w-full max-w-4xl max-h-[95dvh] sm:max-h-[93dvh] flex flex-col shadow-2xl border border-slate-300 animate-scale-up overflow-hidden print:max-h-none print:shadow-none print:border-none">
 
-              {/* ===== HEADER KOP SURAT ===== */}
-              <div className="bg-white border-b-2 border-slate-800 px-5 py-3 flex items-center gap-4 print:block">
-                {/* Logo */}
-                <div className="shrink-0 w-15 h-15 rounded-full flex items-center justify-center border-slate-450 overflow-hidden">
+            {/* ===== AREA LEMBAR DISPOSISI (RESPONSIF & AUTO-FIT) ===== */}
+            <div className="flex-1 overflow-y-auto">
+
+              {/* KOP SURAT */}
+              <div className="bg-white px-3 sm:px-6 pt-3 pb-2 flex items-center gap-3 sm:gap-4">
+                <div className="shrink-0 w-11 h-11 sm:w-14 sm:h-14 flex items-center justify-center">
                   <img
                     src={LOGO_KOTA_BITUNG_SULAWESI_UTARA}
-                    alt='LOGO PEMKOT'
+                    alt="Logo Pemerintah Kota Bitung"
+                    className="w-full h-full object-contain"
                   />
                 </div>
-                <div className="flex-1 text-center">
-                  <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide">PEMERINTAH KOTA BITUNG</p>
-                  <h1 className="text-sm sm:text-base font-black text-slate-900 uppercase leading-tight tracking-tight">
-                    BADAN KEPEGAWAIAN DAN PENGEMBANGAN
-                  </h1>
-                  <h2 className="text-sm sm:text-base font-black text-slate-900 uppercase leading-tight tracking-tight">
+                <div className="flex-1 text-center sm:pr-12">
+                  <p className="text-[10px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    PEMERINTAH KOTA BITUNG
+                  </p>
+                  <h1 className="text-xs sm:text-sm md:text-base font-black text-slate-900 uppercase leading-tight">
+                    BADAN KEPEGAWAIAN DAN PENGEMBANGAN<br />
                     SUMBER DAYA MANUSIA DAERAH
-                  </h2>
-                  <p className="text-[9px] text-slate-500 mt-0.5">
-                    Jln. DR. Sam Ratulangi No. 40 Bitung 95511. Telp/Fax: (0438) 21458 Email: bkpsdmd@kotabitung@gmail.com
+                  </h1>
+                  <p className="text-[9px] sm:text-[10px] text-slate-600 mt-0.5 leading-tight">
+                    Jln. DR. Sam Ratulangi No. 45 Bitung 95511. Telp/Fax. (0438) 21458 Email: bkpsdmd@kotabitung@gmail.com
                   </p>
                 </div>
               </div>
 
-              {/* ===== JUDUL LEMBAR ===== */}
-              <div className="border-b border-slate-800 py-1.5 text-center">
-                <h3 className="text-sm font-black tracking-[0.3em] uppercase text-slate-900">
-                  LEMBAR &nbsp; DISPOSISI
-                </h3>
-              </div>
+              {/* KOTAK UTAMA BLANGKO DISPOSISI */}
+              <div className="mx-2.5 sm:mx-5 mb-3 border-2 border-slate-800 text-slate-900 text-xs">
 
-              {/* ===== BODY UTAMA: 2 KOLOM ===== */}
-              <div className="flex flex-col sm:flex-row border-b border-slate-800 text-xs">
+                {/* JUDUL LEMBAR DISPOSISI */}
+                <div className="border-b border-slate-800 py-1 text-center bg-slate-50/70">
+                  <h3 className="text-xs sm:text-sm font-black tracking-[0.3em] uppercase text-slate-900">
+                    LEMBAR &nbsp; DISPOSISI
+                  </h3>
+                </div>
 
-                {/* ===== KOLOM KIRI: Metadata Surat + Diteruskan Kepada ===== */}
-                <div className="flex-1 border-b sm:border-b-0 sm:border-r border-slate-800">
-
-                  {/* Info Surat */}
-                  <div className="border-b border-slate-300 p-3 space-y-1.5 text-[11px]">
-                    <div className="flex gap-2">
-                      <span className="font-semibold text-slate-700 w-20 shrink-0">Surat dari</span>
-                      <span className="text-slate-500 mr-1">:</span>
-                      <span className="font-bold text-slate-900">{targetSuratDisposisi.asal_surat}</span>
+                {/* BAGIAN ATAS: DATA DARI LOKET (2 KOLOM RESPONSIF) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 border-b border-slate-800 divide-y md:divide-y-0 md:divide-x divide-slate-800">
+                  {/* Kiri Atas: Surat dari, No. Surat, Tgl. Surat */}
+                  <div className="flex flex-col divide-y divide-slate-800">
+                    <div className="px-2.5 py-1.5 flex-1 flex items-start gap-1.5 text-[10.5px] sm:text-[11px]">
+                      <span className="font-semibold text-slate-700 w-16 sm:w-20 shrink-0">Surat dari</span>
+                      <span>:</span>
+                      <span className="font-bold text-slate-900 break-words">{targetSuratDisposisi.asal_surat || '—'}</span>
                     </div>
-                    <div className="flex gap-2">
-                      <span className="font-semibold text-slate-700 w-20 shrink-0">No. Surat</span>
-                      <span className="text-slate-500 mr-1">:</span>
-                      <span className="font-mono text-slate-800">{targetSuratDisposisi.no_surat}</span>
+                    <div className="px-2.5 py-1 flex items-center gap-1.5 text-[10.5px] sm:text-[11px]">
+                      <span className="font-semibold text-slate-700 w-16 sm:w-20 shrink-0">No. Surat</span>
+                      <span>:</span>
+                      <span className="font-mono font-semibold text-slate-900 break-all">{targetSuratDisposisi.no_surat || '—'}</span>
                     </div>
-                    <div className="flex gap-2">
-                      <span className="font-semibold text-slate-700 w-20 shrink-0">Tgl. Surat</span>
-                      <span className="text-slate-500 mr-1">:</span>
-                      <span className="text-slate-800">{targetSuratDisposisi.tgl_surat}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <span className="font-semibold text-slate-700 w-20 shrink-0">Hal</span>
-                      <span className="text-slate-500 mr-1">:</span>
-                      <span className="text-slate-800 italic">{targetSuratDisposisi.perihal}</span>
+                    <div className="px-2.5 py-1 flex items-center gap-1.5 text-[10.5px] sm:text-[11px]">
+                      <span className="font-semibold text-slate-700 w-16 sm:w-20 shrink-0">Tgl. Surat</span>
+                      <span>:</span>
+                      <span className="text-slate-900">
+                        {targetSuratDisposisi.tgl_surat
+                          ? new Date(targetSuratDisposisi.tgl_surat).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric',
+                          })
+                          : '—'}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Nomor Agenda & Sifat row */}
-                  <div className="border-b border-slate-300 grid grid-cols-2 divide-x divide-slate-300 text-[10px]">
-                    <div className="p-2.5">
-                      <p className="text-slate-500 uppercase tracking-wider font-semibold mb-0.5">Diterima Tgl.</p>
-                      <p className="font-bold text-slate-800">{targetSuratDisposisi.tgl_input || '—'}</p>
+                  {/* Kanan Atas: Diterima Tgl, No. Agenda, Sifat */}
+                  <div className="flex flex-col divide-y divide-slate-800">
+                    <div className="px-2.5 py-1 flex items-center gap-1.5 text-[10.5px] sm:text-[11px]">
+                      <span className="font-semibold text-slate-700 w-20 sm:w-24 shrink-0">Diterima Tgl</span>
+                      <span>:</span>
+                      <span className="font-bold text-slate-900">
+                        {targetSuratDisposisi.tgl_input
+                          ? new Date(targetSuratDisposisi.tgl_input).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric',
+                          })
+                          : '—'}
+                      </span>
                     </div>
-                    <div className="p-2.5">
-                      <p className="text-slate-500 uppercase tracking-wider font-semibold mb-0.5">No. Agenda</p>
-                      <p className="font-bold font-mono text-slate-800">{targetSuratDisposisi.no_agenda}</p>
+                    <div className="px-2.5 py-1 flex items-center gap-1.5 text-[10.5px] sm:text-[11px]">
+                      <span className="font-semibold text-slate-700 w-20 sm:w-24 shrink-0">No. Agenda</span>
+                      <span>:</span>
+                      <span className="font-mono font-bold text-slate-900">{targetSuratDisposisi.no_agenda || '—'}</span>
+                    </div>
+                    <div className="px-2.5 py-0.5 text-[10px] sm:text-[11px] font-semibold text-slate-700">
+                      Sifat
+                    </div>
+                    {/* 3 Kotak Sifat Sejajar */}
+                    <div className="grid grid-cols-3 divide-x divide-slate-800 text-[10px] sm:text-[11px]">
+                      {[
+                        { label: 'Sangat Segera', activeBg: 'bg-red-600 border-red-600 text-white', activeText: 'font-bold text-red-700' },
+                        { label: 'Segera', activeBg: 'bg-amber-500 border-amber-500 text-white', activeText: 'font-bold text-amber-700' },
+                        { label: 'Rahasia', activeBg: 'bg-slate-800 border-slate-800 text-white', activeText: 'font-bold text-slate-900' },
+                      ].map((s) => {
+                        const isSifat = targetSuratDisposisi.sifat === s.label;
+                        return (
+                          <div key={s.label} className="px-1.5 sm:px-2 py-1 flex items-center gap-1 sm:gap-1.5">
+                            <span
+                              className={`w-3 h-3 sm:w-3.5 sm:h-3.5 border flex items-center justify-center text-[8px] sm:text-[9px] font-black shrink-0 ${isSifat ? s.activeBg : 'border-slate-700 bg-white'
+                                }`}
+                            >
+                              {isSifat ? '✓' : ''}
+                            </span>
+                            <span className={`leading-tight ${isSifat ? s.activeText : 'text-slate-700'}`}>
+                              {s.label}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                  <div className="border-b border-slate-300 grid grid-cols-2 divide-x divide-slate-300 text-[10px]">
-                    <div className="p-2.5">
-                      <p className="text-slate-500 uppercase tracking-wider font-semibold mb-0.5">Sifat</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`flex items-center gap-1 ${targetSuratDisposisi.sifat === 'Sangat Segera' ? 'font-bold text-red-700' : 'text-slate-400'}`}>
-                          <span className={`w-3 h-3 rounded-sm border border-slate-400 inline-block ${targetSuratDisposisi.sifat === 'Sangat Segera' ? 'bg-red-600 border-red-600' : ''}`} />
-                          Sangat Segera
-                        </span>
+                </div>
+
+                {/* BARIS HAL (PERIHAL DARI LOKET) */}
+                <div className="border-b border-slate-800 px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[10.5px] sm:text-[11px]">
+                  <div className="flex items-start gap-1.5 flex-1 min-w-[200px]">
+                    <span className="font-semibold text-slate-700 w-16 sm:w-20 shrink-0">Hal :</span>
+                    <span className="font-medium text-slate-900">{targetSuratDisposisi.perihal || '—'}</span>
+                  </div>
+                  {targetSuratDisposisi.nama_kategori && (
+                    <span className="shrink-0 px-2 py-0.5 bg-slate-100 border border-slate-300 rounded text-[9.5px] sm:text-[10px] font-semibold text-slate-600">
+                      {targetSuratDisposisi.nama_kategori}
+                    </span>
+                  )}
+                </div>
+
+                {/* BAGIAN TENGAH: CHECKLIST PENERIMA & HARAPAN (2 KOLOM) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 border-b border-slate-800 divide-y md:divide-y-0 md:divide-x divide-slate-800">
+
+                  {/* KOLOM KIRI: DITERUSKAN KEPADA SDR. */}
+                  <div className="p-2 sm:p-2.5 flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10.5px] font-bold text-slate-800 mb-1">
+                        Diteruskan Kepada Sdr. :
+                      </p>
+                      <div className="space-y-0.5">
+                        {(() => {
+                          const cariIdBagian = (kode: string, kataKunci: string, fallbackIdx: number) => {
+                            const cocok = bagianList.find(
+                              (b) =>
+                                b.kode_bagian?.toUpperCase() === kode.toUpperCase() ||
+                                b.nama_bagian?.toLowerCase().includes(kataKunci.toLowerCase())
+                            );
+                            return cocok?.id ?? bagianList[fallbackIdx]?.id ?? bagianList[0]?.id ?? 0;
+                          };
+
+                          const idSekr = cariIdBagian('SEKR', 'sekretar', 0);
+                          const idPembinaan = cariIdBagian('PU', 'pembinaan', 1);
+                          const idMutasi = cariIdBagian('MIK', 'mutasi', 2);
+                          const idPsdm = cariIdBagian('PSDM', 'pengembangan', 3);
+
+                          const daftarPenerima = [
+                            { id: 'sekretaris', label: 'SEKRETARIS', bagianId: idSekr, heading: true },
+                            { id: 'kasubbag-umum', label: 'KASUBBAG. UMUM DAN PERLENGKAPAN', bagianId: idSekr },
+                            { id: 'kasubbag-keuangan', label: 'KASUBBAG. PERENCANAAN DAN KEUANGAN', bagianId: idSekr },
+                            { id: 'bendahara', label: 'BENDAHARA', bagianId: idSekr },
+                            { id: 'pengurus-barang', label: 'PENGURUS BARANG', bagianId: idSekr },
+                            { id: 'kabid-pembinaan', label: 'KABID. PEMBINAAN UMUM', bagianId: idPembinaan, heading: true },
+                            { id: 'pu-madya', label: 'ANALIS KEPEGAWAIAN AHLI MADYA', bagianId: idPembinaan },
+                            { id: 'pu-muda', label: 'ANALIS KEPEGAWAIAN AHLI MUDA', bagianId: idPembinaan },
+                            { id: 'kabid-psdm', label: 'KABID. PENGEMBANGAN SDM', bagianId: idPsdm, heading: true },
+                            { id: 'psdm-madya', label: 'ANALIS KEPEGAWAIAN AHLI MADYA', bagianId: idPsdm },
+                            { id: 'psdm-muda', label: 'ANALIS KEPEGAWAIAN AHLI MUDA', bagianId: idPsdm },
+                            { id: 'kabid-mik', label: 'KABID MUTASI DAN INFORMASI KEPEGAWAIAN', bagianId: idMutasi, heading: true },
+                            { id: 'mik-madya', label: 'ANALIS KEPEGAWAIAN AHLI MADYA', bagianId: idMutasi },
+                            { id: 'mik-muda', label: 'ANALIS KEPEGAWAIAN AHLI MUDA', bagianId: idMutasi },
+                          ];
+
+                          const activeBagianId = daftarPenerima.find((d) => checkedPenerima.includes(d.id))?.bagianId;
+
+                          return daftarPenerima.map((item) => {
+                            const checked = checkedPenerima.includes(item.id);
+
+                            return (
+                              <label
+                                key={item.id}
+                                className={`flex items-center gap-2 px-1 py-[1px] rounded cursor-pointer transition select-none ${checked ? 'bg-amber-50' : 'hover:bg-slate-50'
+                                  }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      if (activeBagianId === item.bagianId) {
+                                        setCheckedPenerima([...checkedPenerima, item.id]);
+                                      } else {
+                                        setCheckedPenerima([item.id]);
+                                        setSelectedBagianTujuan(item.bagianId);
+                                      }
+                                    } else {
+                                      const sisa = checkedPenerima.filter((p) => p !== item.id);
+                                      setCheckedPenerima(sisa);
+                                      if (sisa.length === 0) {
+                                        setSelectedBagianTujuan(0);
+                                      }
+                                    }
+                                  }}
+                                  className="w-3.5 h-3.5 rounded-none text-amber-600 border-slate-700 focus:ring-amber-500 shrink-0 cursor-pointer"
+                                />
+                                <span
+                                  className={`text-[10px] leading-tight ${item.heading ? 'font-bold underline decoration-slate-700 underline-offset-2' : 'font-medium'
+                                    } ${checked ? 'text-amber-900 font-bold' : 'text-slate-800'}`}
+                                >
+                                  {item.label}
+                                </span>
+                              </label>
+                            );
+                          });
+                        })()}
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`flex items-center gap-1 ${targetSuratDisposisi.sifat === 'Segera' ? 'font-bold text-amber-700' : 'text-slate-400'}`}>
-                          <span className={`w-3 h-3 rounded-sm border border-slate-400 inline-block ${targetSuratDisposisi.sifat === 'Segera' ? 'bg-amber-500 border-amber-500' : ''}`} />
-                          Segera
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`flex items-center gap-1 ${targetSuratDisposisi.sifat === 'Rahasia' ? 'font-bold text-slate-900' : 'text-slate-400'}`}>
-                          <span className={`w-3 h-3 rounded-sm border border-slate-400 inline-block ${targetSuratDisposisi.sifat === 'Rahasia' ? 'bg-slate-800 border-slate-800' : ''}`} />
-                          Rahasia
-                        </span>
-                      </div>
-                    </div>
-                    <div className="p-2.5">
-                      <p className="text-slate-500 uppercase tracking-wider font-semibold mb-1">Kategori</p>
-                      <p className="font-semibold text-slate-800">{targetSuratDisposisi.nama_kategori || '—'}</p>
                     </div>
                   </div>
 
-                  {/* Diteruskan Kepada */}
-                  <div className="p-3">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-700 mb-2 border-b border-slate-200 pb-1">
-                      Diteruskan Kepada Sdr.:
+                  {/* KOLOM KANAN: DENGAN HORMAT HARAP */}
+                  <div className="p-2 sm:p-2.5">
+                    <p className="text-[10.5px] font-bold text-slate-800 mb-1">
+                      Dengan hormat harap :
                     </p>
                     <div className="space-y-0.5">
-                      {/* Baris checklist sesuai struktur BKPSDMD dari foto template */}
-                      {([
-                        { label: 'SEKRETARIS', bagianId: 1 },
-                        { label: 'Kasubbag. Umum dan Perlengkapan', bagianId: null },
-                        { label: 'Kasubbag. Perencanaan dan Keuangan', bagianId: null },
-                        { label: 'Pengurus Barang', bagianId: null },
-                        { label: 'Bendahara', bagianId: null },
-                        { label: 'Kabid. Pembinaan Umum', bagianId: 2 },
-                      ] as { label: string; bagianId: number | null }[]).map((item, idx) => {
-                        const isSelected = item.bagianId !== null && item.bagianId === selectedBagianTujuan;
+                      {[
+                        'KOORDINASIKAN DENGAN INSTANSI TERKAIT',
+                        'PELAJARI / MONITOR',
+                        'WAKILI / HADIRI / WAKILKAN',
+                        'TINDAKLANJUTI',
+                        'BUAT TELAAHAN',
+                        'PERTIMBANGKAN / KAJI KEMBALI',
+                        'LAPORKAN HASILNYA',
+                        'PROSES SESUAI KETENTUAN',
+                        'PEDOMANI',
+                        'JADWALKAN',
+                        'PERSIAPKAN',
+                        'UNTUK MENJADI PERHATIAN (UMP)',
+                        'UNTUK DIKETAHUI (UDK)',
+                        'SIAPKAN SAMBUTAN',
+                        'INGATKAN',
+                        'ARSIP',
+                      ].map((harapan) => {
+                        const checked = selectedInstruksi.includes(harapan);
                         return (
-                          <div key={idx} className={`flex items-center gap-2 px-2 py-0.5 rounded ${isSelected ? 'bg-amber-50' : ''}`}>
-                            <span className={`w-3.5 h-3.5 rounded-sm border flex-shrink-0 flex items-center justify-center ${isSelected ? 'bg-amber-500 border-amber-600' : 'border-slate-400 bg-white'}`}>
-                              {isSelected && <span className="text-white text-[8px] font-black">✓</span>}
+                          <label
+                            key={harapan}
+                            className={`flex items-center gap-2 px-1 py-[1px] rounded cursor-pointer transition select-none ${checked ? 'bg-amber-50' : 'hover:bg-slate-50'
+                              }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedInstruksi([...selectedInstruksi, harapan]);
+                                } else {
+                                  setSelectedInstruksi(selectedInstruksi.filter((i) => i !== harapan));
+                                }
+                              }}
+                              className="w-3.5 h-3.5 rounded-none text-amber-600 border-slate-700 focus:ring-amber-500 shrink-0 cursor-pointer"
+                            />
+                            <span
+                              className={`text-[10px] leading-tight ${checked ? 'text-amber-900 font-bold' : 'text-slate-800 font-medium'
+                                }`}
+                            >
+                              {harapan}
                             </span>
-                            <span className={`text-[10px] leading-snug ${isSelected ? 'text-amber-900 font-bold' : 'text-slate-700'}`}>{item.label}</span>
-                          </div>
+                          </label>
                         );
                       })}
-
-                      {/* Kabid. Pengembangan SDM */}
-                      <p className="text-[9px] font-black uppercase tracking-wider text-slate-700 mt-1.5 mb-0.5 pl-4">
-                        KABID. PENGEMBANGAN SDM
-                      </p>
-                      {([
-                        { label: 'Analis Kepegawaian Ahli Madya', bagianId: 4 },
-                        { label: 'Analis Kepegawaian Ahli Muda', bagianId: null },
-                      ] as { label: string; bagianId: number | null }[]).map((item, idx) => {
-                        const isSelected = item.bagianId !== null && item.bagianId === selectedBagianTujuan;
-                        return (
-                          <div key={idx} className={`flex items-center gap-2 px-2 py-0.5 rounded ${isSelected ? 'bg-amber-50' : ''}`}>
-                            <span className={`w-3.5 h-3.5 rounded-sm border flex-shrink-0 flex items-center justify-center ${isSelected ? 'bg-amber-500 border-amber-600' : 'border-slate-400 bg-white'}`}>
-                              {isSelected && <span className="text-white text-[8px] font-black">✓</span>}
-                            </span>
-                            <span className={`text-[10px] leading-snug ${isSelected ? 'text-amber-900 font-bold' : 'text-slate-700'}`}>{item.label}</span>
-                          </div>
-                        );
-                      })}
-
-                      {/* Kabid Mutasi dan Informasi Kepegawaian */}
-                      <p className="text-[9px] font-black uppercase tracking-wider text-slate-700 mt-1.5 mb-0.5 pl-4">
-                        KABID MUTASI DAN INFORMASI KEPEGAWAIAN
-                      </p>
-                      {([
-                        { label: 'Analis Kepegawaian Ahli Madya', bagianId: 3 },
-                        { label: 'Analis Kepegawaian Ahli Muda', bagianId: null },
-                        { label: 'Analis Kepegawaian Ahli Muda', bagianId: null },
-                      ] as { label: string; bagianId: number | null }[]).map((item, idx) => {
-                        const isSelected = item.bagianId !== null && item.bagianId === selectedBagianTujuan;
-                        return (
-                          <div key={idx} className={`flex items-center gap-2 px-2 py-0.5 rounded ${isSelected ? 'bg-amber-50' : ''}`}>
-                            <span className={`w-3.5 h-3.5 rounded-sm border flex-shrink-0 flex items-center justify-center ${isSelected ? 'bg-amber-500 border-amber-600' : 'border-slate-400 bg-white'}`}>
-                              {isSelected && <span className="text-white text-[8px] font-black">✓</span>}
-                            </span>
-                            <span className={`text-[10px] leading-snug ${isSelected ? 'text-amber-900 font-bold' : 'text-slate-700'}`}>{item.label}</span>
-                          </div>
-                        );
-                      })}
-
-                      <div className="mt-1.5 border-t border-slate-200 pt-1.5">
-                        <p className="text-[9px] font-black uppercase tracking-wider text-slate-700 mb-0.5">
-                          Teruskan kepada instansi terkait:
-                        </p>
-                        <div className="h-6 border-b border-dotted border-slate-300" />
-                      </div>
                     </div>
-                  </div>
-
-                  {/* Pilihan Bagian Tujuan (dropdown fungsional) */}
-                  <div className="border-t border-slate-200 p-3 bg-amber-50/40">
-                    <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider mb-1.5">
-                      ★ Pilih Bagian Penerima Disposisi:
-                    </p>
-                    <select
-                      value={selectedBagianTujuan}
-                      onChange={(e) => setSelectedBagianTujuan(Number(e.target.value))}
-                      className="w-full px-2.5 py-2 bg-white border border-amber-300 rounded-lg text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    >
-                      {bagianList
-                        .filter((b) => b.kode_bagian !== 'SEKR')
-                        .map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.nama_bagian} ({b.kode_bagian})
-                          </option>
-                        ))}
-                    </select>
                   </div>
                 </div>
 
-                {/* ===== KOLOM KANAN: Instruksi Disposisi ===== */}
-                <div className="w-full sm:w-56 flex flex-col">
-                  {/* Header kolom kanan */}
-                  <div className="border-b border-slate-300 p-2.5 text-center bg-slate-50">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-700">
-                      Dengan hormat harap:
-                    </p>
-                  </div>
-
-                  {/* Checklist Instruksi Disposisi */}
-                  <div className="flex-1 p-2.5 space-y-0.5">
-                    {instruksiList.map((ins) => {
-                      const checked = selectedInstruksi.includes(ins.instruksi);
-                      return (
-                        <label
-                          key={ins.id}
-                          className={`flex items-center gap-2 px-1.5 py-1 rounded cursor-pointer transition ${checked ? 'bg-amber-50' : 'hover:bg-slate-50'
-                            }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedInstruksi([...selectedInstruksi, ins.instruksi]);
-                              } else {
-                                setSelectedInstruksi(selectedInstruksi.filter((i) => i !== ins.instruksi));
-                              }
-                            }}
-                            className="w-3.5 h-3.5 rounded-sm text-amber-600 border-slate-400 focus:ring-amber-500 shrink-0 cursor-pointer"
-                          />
-                          <span className={`text-[10px] leading-snug ${checked ? 'text-amber-900 font-bold' : 'text-slate-700'}`}>
-                            {ins.instruksi}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-
-                  {/* Catatan */}
-                  <div className="border-t border-slate-300 p-2.5">
-                    <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                      Catatan:
-                    </p>
-                    <textarea
-                      rows={3}
-                      value={catatanKepala}
-                      onChange={(e) => setCatatanKepala(e.target.value)}
-                      placeholder="Catatan khusus pimpinan..."
-                      className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[10px] text-slate-900 focus:ring-2 focus:ring-amber-500 focus:outline-none resize-none"
-                    />
-                  </div>
-
-                  {/* Kolom TTD Kepala Badan */}
-                  <div className="border-t border-slate-800 p-3 bg-slate-50">
-                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-700 text-center leading-snug mb-3">
-                      KEPALA BADAN KEPEGAWAIAN DAN<br />
-                      PENGEMBANGAN SUMBER DAYA MANUSIA DAERAH<br />
-                      KOTA BITUNG,
-                    </p>
-                    {/* Area TTD */}
-                    <div className="h-14 border border-dashed border-slate-300 rounded mb-2 flex items-center justify-center">
-                      <span className="text-[9px] text-slate-400 italic">Tanda tangan</span>
-                    </div>
-                    <p className="text-[10px] font-black text-slate-900 text-center uppercase leading-tight">
-                      GIVE RENALDOW MOSE, AP, M.SI
-                    </p>
-                    <p className="text-[9px] text-slate-600 text-center mt-0.5">
-                      Pembina Utama Muda
-                    </p>
-                    <p className="text-[9px] font-mono text-slate-700 text-center">
-                      NIP. 19750618 199412 1 001
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* ===== ACTION BUTTONS (tidak dicetak) ===== */}
-              <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 print:hidden">
-                <p className="text-[10px] text-slate-500 italic">
-                  * Lembar disposisi akan diteruskan ke bagian pelaksana setelah dikonfirmasi.
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setModalDisposisiOpen(false)}
-                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer transition"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmDisposisi}
-                    className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold shadow-md shadow-amber-900/20 inline-flex items-center gap-1.5 cursor-pointer transition"
-                  >
-                    <Crown className="w-3.5 h-3.5" />
-                    <span>Terbitkan Lembar Disposisi</span>
-                  </button>
+                {/* BAGIAN BAWAH: CATATAN */}
+                <div className="p-2">
+                  <p className="text-[10.5px] font-bold text-slate-800 mb-1">
+                    Catatan :
+                  </p>
+                  <textarea
+                    rows={2}
+                    value={catatanKepala}
+                    onChange={(e) => setCatatanKepala(e.target.value)}
+                    placeholder="Tuliskan catatan khusus pimpinan di sini..."
+                    className="w-full px-2.5 py-1.5 bg-slate-50/50 border border-slate-300 rounded text-[11px] text-slate-900 focus:bg-white focus:ring-1 focus:ring-slate-800 focus:outline-none resize-none leading-snug"
+                  />
                 </div>
               </div>
             </div>
-          </div>
-        )
-      }
 
-      {/* Modal Kembalikan untuk Revisi Konsep Surat Keluar */}
-      {
-        modalRevisiKeluarOpen && targetSuratRevisi && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50">
-            <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200 animate-scale-up space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-red-100 text-red-600 rounded-xl shrink-0">
-                  <RotateCcw className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900">
-                    Kembalikan Konsep Naskah Dinas untuk Revisi
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Kepala Bagian pembuat surat akan menerima notifikasi revisi beserta catatan perbaikan.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
-                <p><strong>No. Draft:</strong> {targetSuratRevisi.no_draft}</p>
-                <p><strong>Bagian Pembuat:</strong> {targetSuratRevisi.nama_bagian_pengirim}</p>
-                <p><strong>Perihal:</strong> {targetSuratRevisi.perihal}</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                  Rincian Poin Catatan Revisi Pimpinan:
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={catatanRevisiKeluar}
-                  onChange={(e) => setCatatanRevisiKeluar(e.target.value)}
-                  placeholder="Tuliskan bagian mana dari naskah dinas yang perlu disempurnakan atau direvisi..."
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            {/* ===== FOOTER TOMBOL AKSI (SELALU TERLIHAT DI SEMUA UKURAN LAYAR) ===== */}
+            <div className="shrink-0 bg-slate-50 border-t border-slate-200 px-3 sm:px-5 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2 print:hidden">
+              <p className="text-[10px] sm:text-[11px] text-slate-500 italic text-center sm:text-left">
+                Lembar disposisi akan diteruskan ke bagian pelaksana setelah dikonfirmasi.
+              </p>
+              <div className="flex items-center justify-end gap-2 w-full sm:w-auto">
                 <button
                   type="button"
-                  onClick={() => setModalRevisiKeluarOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                  onClick={() => setModalDisposisiOpen(false)}
+                  className="flex-1 sm:flex-none px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer transition"
                 >
                   Batal
                 </button>
                 <button
                   type="button"
-                  onClick={handleConfirmRevisiKeluar}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                  onClick={handleConfirmDisposisi}
+                  className="flex-1 sm:flex-none px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold shadow-md shadow-amber-900/20 inline-flex items-center justify-center gap-1.5 cursor-pointer transition"
                 >
-                  Kirim Catatan Revisi
+                  <Crown className="w-3.5 h-3.5" />
+                  <span>Terbitkan Lembar Disposisi</span>
                 </button>
               </div>
             </div>
+
           </div>
-        )
-      }
+        </div>,
+        document.body
+      )}
+
     </div >
   );
 };

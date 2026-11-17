@@ -3,9 +3,11 @@
  * @description Dashboard Sekretariat BKPSDMD Kota Bitung (Verifikasi, Terverifikasi, Pengembalian, Penerusan Terpadu, dan Rekapitulasi)
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePersuratan } from '../../context/PersuratanContext';
+import LOGO_KOTA_BITUNG_SULAWESI_UTARA from '../../assets/LOGO_KOTA_BITUNG_SULAWESI_UTARA.png';
 import { SuratMasuk } from '../../types';
+import { Printer } from 'lucide-react';
 import {
   FileCheck2,
   CheckCircle,
@@ -13,12 +15,14 @@ import {
   Send,
   Eye,
   AlertTriangle,
-  Printer,
   Download,
   BarChart3,
   Building,
-  X
+  X,
+  Archive
 } from 'lucide-react';
+
+import { ArsipSurat } from '../ArsipSurat';
 
 interface SekretariatDashboardProps {
   onLihatSurat: (surat: SuratMasuk) => void;
@@ -40,11 +44,13 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
     kembalikanKeLoket,
     teruskanKeBagian,
     teruskanSuratKeluar,
+    arsipkanSuratKeluar
   } = usePersuratan();
 
   const [internalMenu, setInternalMenu] = useState<string>('verifikasi');
 
   const rawMenu = externalActiveMenu || internalMenu;
+
 
   // Memetakan menu penerusan (baik penerusan_kaban maupun penerusan_bagian) menjadi 1 menu terpadu 'penerusan'
   const activeMenu =
@@ -102,8 +108,13 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
   );
 
   // Ambil daftar surat keluar internal yang sudah disetujui Kepala Badan
-  const suratKeluarSiapDiteruskan = (suratKeluarList || []).filter(
-    (sk) => sk.status_persetujuan === 'DISETUJUI_KEPALA_BADAN'
+  // Ambil daftar surat keluar internal yang sudah disetujui Kepala Badan
+  const suratKeluarSiapDiteruskan = (suratKeluarList || []).filter((sk) =>
+    [
+      'DISETUJUI_KEPALA_BADAN',
+      'DISETUJUI_KEPALA_KANTOR',
+      'DISETUJUI',
+    ].includes(sk.status_persetujuan)
   );
 
   // Gabungan total berkas siap diteruskan (Surat Masuk Disposisi + Surat Keluar Disetujui)
@@ -125,79 +136,325 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
     setModalKembalikanOpen(false);
     setTargetSuratKembalikan(null);
   };
+  // Helper membaca indeks bulan (0 = Jan ... 11 = Des) dari tanggal database
+  const getBulanIndex = (rawDate?: string): number | null => {
+    if (!rawDate) return null;
+    const str = String(rawDate).trim();
+    const tahunSekarang = new Date().getFullYear();
 
-  // Data Rekapitulasi 12 Bulan (Jan - Des)
-  const rekapitulasiBulanan = [
-    { bulan: 'Januari', masuk: 24, keluar: 18, disposisi: 22 },
-    { bulan: 'Februari', masuk: 31, keluar: 22, disposisi: 29 },
-    { bulan: 'Maret', masuk: 28, keluar: 20, disposisi: 26 },
-    { bulan: 'April', masuk: 35, keluar: 27, disposisi: 33 },
-    { bulan: 'Mei', masuk: 29, keluar: 21, disposisi: 28 },
-    { bulan: 'Juni', masuk: 42, keluar: 30, disposisi: 39 },
-    { bulan: 'Juli', masuk: 38, keluar: 25, disposisi: 35 },
-    { bulan: 'Agustus', masuk: 45, keluar: 34, disposisi: 41 },
-    { bulan: 'September', masuk: 39, keluar: 28, disposisi: 37 },
-    { bulan: 'Oktober', masuk: 48, keluar: 36, disposisi: 44 },
-    { bulan: 'November', masuk: suratMasukList.length, keluar: suratKeluarList.length, disposisi: 4 },
-    { bulan: 'Desember', masuk: 0, keluar: 0, disposisi: 0 }
-  ];
+    // 1. Format ISO / SQL: "2026-11-18..."
+    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const tahun = Number(isoMatch[1]);
+      const bulan = Number(isoMatch[2]) - 1;
+      return tahun === tahunSekarang && bulan >= 0 && bulan <= 11 ? bulan : null;
+    }
+
+    // 2. Format teks Indonesia: "17 Nov 2026 • 19:07 WITA"
+    const namaBulan = ['jan', 'feb', 'mar', 'apr', 'mei', 'jun', 'jul', 'agu', 'sep', 'okt', 'nov', 'des'];
+    const lower = str.toLowerCase();
+    if (!lower.includes(String(tahunSekarang))) return null;
+
+    for (let i = 0; i < namaBulan.length; i++) {
+      if (lower.includes(namaBulan[i])) return i;
+    }
+    return null;
+  };
+
+  // Hitung rekap 12 bulan otomatis dari database (mulai dari 0)
+  const rekapBulananDb = useMemo(() => {
+    const daftarBulan = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+
+    const hasil = daftarBulan.map((nama) => ({
+      bulan: nama,
+      masuk: 0,
+      keluar: 0,
+      disposisi: 0,
+      selesai: 0,
+    }));
+
+    (suratMasukList || []).forEach((sm: any) => {
+      const idx = getBulanIndex(sm.tgl_input || sm.created_at || sm.tgl_surat);
+      if (idx !== null) {
+        hasil[idx].masuk += 1;
+        if (sm.disposisi) hasil[idx].disposisi += 1;
+        if (sm.status_surat === 'ARSIP' || sm.status_surat === 'SELESAI' || sm.disposisi) {
+          hasil[idx].selesai += 1;
+        }
+      }
+    });
+
+    (suratKeluarList || []).forEach((sk: any) => {
+      const idx = getBulanIndex(sk.tgl_dibuat || sk.created_at);
+      if (idx !== null) {
+        hasil[idx].keluar += 1;
+        if (sk.status_persetujuan === 'DISETUJUI_KEPALA_BADAN') {
+          hasil[idx].selesai += 1;
+        }
+      }
+    });
+
+    return hasil.map((item) => {
+      const total = item.masuk + item.keluar;
+      return {
+        bulan: item.bulan,
+        masuk: item.masuk,
+        keluar: item.keluar,
+        disposisi: item.disposisi,
+        rasio: total > 0 ? Math.round((item.selesai / total) * 100) : 0,
+      };
+    });
+  }, [suratMasukList, suratKeluarList]);
+
+
+  const rekapitulasiBulanan = rekapBulananDb;
 
   const maxChartValue = Math.max(...rekapitulasiBulanan.map((r) => Math.max(r.masuk, r.keluar, r.disposisi))) || 50;
+
+  const formatWaktuInput = (tanggal?: string) => {
+    if (!tanggal) return '-';
+    const date = new Date(tanggal);
+    if (isNaN(date.getTime())) return tanggal;
+
+    const tgl = date.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    const jam = date
+      .toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+      .replace('.', ':');
+
+    return `${tgl} • ${jam} WITA`;
+  };
+
+  const handleExportPDF = () => {
+    const tahun = new Date().getFullYear();
+    const totalMasuk = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.masuk || 0), 0);
+    const totalKeluar = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.keluar || 0), 0);
+    const totalDisposisi = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.disposisi || 0), 0);
+    const totalRasio = totalMasuk > 0 ? Math.round((totalDisposisi / totalMasuk) * 100) : 0;
+
+    const rowsHtml = rekapitulasiBulanan
+      .map((r: any, idx: number) => {
+        const rasio = r.masuk > 0 ? Math.round((r.disposisi / r.masuk) * 100) : 0;
+        return `
+        <tr>
+          <td style="text-align:center;">${idx + 1}</td>
+          <td>${r.bulan}</td>
+          <td style="text-align:center;">${r.masuk}</td>
+          <td style="text-align:center;">${r.keluar}</td>
+          <td style="text-align:center;">${r.disposisi}</td>
+          <td style="text-align:center;">${rasio}%</td>
+        </tr>
+      `;
+      })
+      .join('');
+    const logoUrl = new URL(LOGO_KOTA_BITUNG_SULAWESI_UTARA, window.location.origin).href;
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+    <html>
+      <head>
+        <title>Laporan Rekapitulasi Persuratan BKPSDMD ${tahun}</title>
+        <style>
+          @page { size: A4; margin: 16mm; }
+          body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; }
+          .kop { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 18px; }
+          .kop h2 { margin: 0; font-size: 14pt; }
+          .kop h3 { margin: 2px 0; font-size: 12pt; }
+          .kop p { margin: 4px 0 0; font-size: 10pt; color: #475569; }
+          table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px 10px; }
+          th { background-color: #047857; color: #ffffff; }
+          tfoot td { background-color: #f1f5f9; font-weight: bold; }
+          .ttd { margin-top: 36px; float: right; width: 240px; text-align: left; font-size: 10pt; }
+        </style>
+      </head>
+      <body>
+        <div class="kop">
+        <img
+    src="${logoUrl}"
+    alt="Logo Kota Bitung"
+    style="height: 64px; width: auto; display: block; margin: 0 auto 8px auto;"
+  />
+          <h3>
+          PEMERINTAH KOTA BITUNG
+          </h3>
+          <h2>BADAN KEPEGAWAIAN DAN PENGEMBANGAN SUMBER DAYA MANUSIA DAERAH</h2>
+          <p>Laporan Rekapitulasi Aktivitas Persuratan Digital — Tahun ${tahun}</p>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>Bulan Pelaporan</th>
+              <th>Surat Masuk</th>
+              <th>Surat Keluar</th>
+              <th>Disposisi</th>
+              <th>Rasio Selesai</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2" style="text-align:center;">TOTAL</td>
+              <td style="text-align:center;">${totalMasuk}</td>
+              <td style="text-align:center;">${totalKeluar}</td>
+              <td style="text-align:center;">${totalDisposisi}</td>
+              <td style="text-align:center;">${totalRasio}%</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div class="ttd">
+          <p>Bitung, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}<br/>Kepala BKPSDMD Kota Bitung,</p>
+          <br/><br/><br/>
+          <p><strong>______________________________</strong></p>
+        </div>
+      </body>
+    </html >
+  `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 300);
+  };
+
+  // Fungsi Ekspor Excel (.xls)
+  const handleExportExcel = () => {
+    const tahun = new Date().getFullYear();
+    const totalMasuk = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.masuk || 0), 0);
+    const totalKeluar = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.keluar || 0), 0);
+    const totalDisposisi = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.disposisi || 0), 0);
+    const totalRasio = totalMasuk > 0 ? Math.round((totalDisposisi / totalMasuk) * 100) : 0;
+
+    const rowsHtml = rekapitulasiBulanan
+      .map((r: any, idx: number) => {
+        const rasio = r.masuk > 0 ? Math.round((r.disposisi / r.masuk) * 100) : 0;
+        return `
+        <tr>
+          <td style="text-align:center;">${idx + 1}</td>
+          <td>${r.bulan}</td>
+          <td style="text-align:center;">${r.masuk || 0}</td>
+          <td style="text-align:center;">${r.keluar || 0}</td>
+          <td style="text-align:center;">${r.disposisi || 0}</td>
+          <td style="text-align:center;">${rasio}%</td>
+        </tr>
+      `;
+      })
+      .join('');
+
+    const htmlTable = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office"
+          xmlns:x="urn:schemas-microsoft-com:office:excel"
+          xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="UTF-8" /></head>
+      <body>
+        <h3>REKAPITULASI PERSURATAN BKPSDMD KOTA BITUNG — TAHUN ${tahun}</h3>
+        <table border="1">
+          <thead>
+            <tr style="background-color:#047857; color:#ffffff; font-weight:bold;">
+              <th>No</th>
+              <th>Bulan Pelaporan</th>
+              <th>Surat Masuk</th>
+              <th>Surat Keluar Internal</th>
+              <th>Disposisi Diterbitkan</th>
+              <th>Rasio Penyelesaian</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot>
+            <tr style="background-color:#f1f5f9; font-weight:bold;">
+              <td colspan="2" style="text-align:center;">TOTAL</td>
+              <td style="text-align:center;">${totalMasuk}</td>
+              <td style="text-align:center;">${totalKeluar}</td>
+              <td style="text-align:center;">${totalDisposisi}</td>
+              <td style="text-align:center;">${totalRasio}%</td>
+            </tr>
+          </tfoot>
+        </table>
+      </body>
+    </html>
+  `;
+
+    const blob = new Blob([htmlTable], {
+      type: 'application/vnd.ms-excel;charset=utf-8;',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Rekapitulasi_Persuratan_BKPSDMD_${tahun}.xls`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+
 
   return (
     <div className="space-y-6">
 
       {/* Subheader Dashboard */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-emerald-100 rounded-xl text-emerald-700 border border-emerald-200">
-            <FileCheck2 className="w-6 h-6" />
+      {(activeMenu === 'verifikasi' || activeMenu === 'terverifikasi') && (
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-[30px] font-black text-slate-900 tracking-tight">
+                Dashboard Sekretariat BKPSDMD
+              </h1>
+              <p className="text-xs text-slate-500">
+                Verifikasi keabsahan surat masuk, dan tata kelola pengembalian berkas
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
-              Dashboard Sekretariat BKPSDMD
-            </h1>
-            <p className="text-xs text-slate-500">
-              Verifikasi keabsahan surat masuk, tata kelola pengembalian berkas, dan penerusan lembar disposisi
-            </p>
+
+          {/* Menu Navigation Pills */}
+          <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 text-xs font-bold">
+            <button
+              onClick={() => handleMenuChange('verifikasi')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-2 ${activeMenu === 'verifikasi'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
+            >
+              <span>Verifikasi</span>
+
+              {menungguVerifikasi.length > 0 && (
+                <span className="w-5 h-5 text-[10px] font-bold rounded-full bg-red-600 text-white flex items-center justify-center shrink-0">
+                  {menungguVerifikasi.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => handleMenuChange('terverifikasi')}
+              className={`px-3 py-1.5 rounded-lg transition ${activeMenu === 'terverifikasi' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+            >
+              Terverifikasi ({terverifikasi.length})
+            </button>
           </div>
         </div>
-
-        {/* Menu Navigation Pills */}
-        <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 text-xs font-bold">
-          <button
-            onClick={() => handleMenuChange('verifikasi')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-2 ${activeMenu === 'verifikasi'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900'
-              }`}
-          >
-            <span>Verifikasi</span>
-
-            {menungguVerifikasi.length > 0 && (
-              <span className="w-5 h-5 text-[10px] font-bold rounded-full bg-red-600 text-white flex items-center justify-center shrink-0">
-                {menungguVerifikasi.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => handleMenuChange('terverifikasi')}
-            className={`px-3 py-1.5 rounded-lg transition ${activeMenu === 'terverifikasi' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-          >
-            Terverifikasi ({terverifikasi.length})
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* 1. MENU: VERIFIKASI SURAT MASUK */}
       {activeMenu === 'verifikasi' && (
-        <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+        <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4 min-h-[550px]">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-base font-extrabold text-slate-900">
+              <h1 className="text-lg font-black text-slate-900">
                 Daftar Surat Masuk Menunggu Verifikasi Sekretariat
-              </h3>
+              </h1>
               <p className="text-xs text-slate-500">
                 Periksa kelengkapan fisik, keterbacaan scan PDF, dan perihal sebelum diajukan ke Kepala Badan.
               </p>
@@ -208,10 +465,10 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
           </div>
 
           <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-            <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+            <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                  <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda</th>
+                  <th className="py-3 px-3 text-center border-r border-l border-slate-200">No. Agenda</th>
                   <th className="py-3 px-3 text-center border-r border-slate-200">Asal, No, & Perihal Surat</th>
                   <th className="py-3 px-3 text-center border-r border-slate-200">Kategori</th>
                   <th className="py-3 px-3 text-center border-r border-slate-200">Sifat</th>
@@ -222,7 +479,7 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {menungguVerifikasi.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-slate-400">
+                    <td colSpan={6} className="text-center py-50 text-slate-400">
                       ✓ Tidak ada antrean surat masuk yang menunggu verifikasi saat ini.
                     </td>
                   </tr>
@@ -231,8 +488,8 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                     <tr key={surat.id} className="hover:bg-slate-50/80 transition">
                       <td className="py-3 px-3 font-mono font-bold text-emerald-950 whitespace-nowrap text-center border-r border-slate-200">
                         {surat.no_agenda}
-                        <div className="text-[10px] text-slate-400 font-sans font-normal">
-                          {surat.tgl_input.split(' ')[0]}
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          {formatWaktuInput(surat.tgl_input)}
                         </div>
                       </td>
                       <td className="py-3 px-3 max-w-sm text-center border-r border-slate-200">
@@ -241,12 +498,12 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                         <p className="text-[11px] text-slate-600 line-clamp-1 italic">"{surat.perihal}"</p>
                       </td>
                       <td className="py-3 px-3 text-center border-r border-slate-200">
-                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-medium whitespace-normal break-words leading-tight inline-block">
                           {surat.nama_kategori}
                         </span>
                       </td>
                       <td className="py-3 px-3 text-center border-r border-slate-200">
-                        <span className="px-2 py-0.5 rounded font-semibold text-[11px] bg-slate-100 text-slate-700">
+                        <span className="px-2 py-0.5 rounded-full font-semibold text-[11px] bg-slate-100 text-slate-700 whitespace-normal break-words leading-tight inline-block">
                           {surat.sifat}
                         </span>
                       </td>
@@ -295,7 +552,7 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
 
       {/* 2. MENU: TERVERIFIKASI / PROSES */}
       {activeMenu === 'terverifikasi' && (
-        <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4 animate-fade-in">
+        <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4 animate-fade-in min-h-[550px]">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
@@ -311,46 +568,47 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
             </span>
           </div>
 
-          <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+          <div className="overflow-y-auto -mx-4 sm:mx-0 px-4 sm:px-0">
             <table className="w-full text-left text-xs border-collapse min-w-[700px]">
               <thead>
                 <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                  <th className="py-3 px-3">No. Agenda</th>
-                  <th className="py-3 px-3">Asal Pengirim &amp; Perihal</th>
-                  <th className="py-3 px-3">Status Saat Ini</th>
-                  <th className="py-3 px-3">Posisi Terakhir</th>
-                  <th className="py-3 px-3 text-right">Aksi</th>
+                  <th className="py-3 px-3 text-center border-r border-l border-slate-200">No. Agenda</th>
+                  <th className="py-3 px-3 text-center border-r border-slate-200">Asal Pengirim &amp; Perihal</th>
+                  <th className="py-3 px-3 text-center border-r border-slate-200">Status Saat Ini</th>
+                  <th className="py-3 px-3 text-center border-r border-slate-200">Posisi Terakhir</th>
+                  <th className="py-3 px-3 text-center border-r border-slate-200">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {terverifikasi.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-8 text-slate-400">
+                    <td colSpan={5} className="text-center py-50 text-slate-400">
                       Belum ada surat yang terverifikasi saat ini.
                     </td>
                   </tr>
                 ) : (
                   terverifikasi.map((surat) => (
                     <tr key={surat.id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3 px-3 font-mono font-bold text-emerald-950 whitespace-nowrap">
+                      <td className="py-3 px-3 font-mono font-bold text-emerald-950 whitespace-nowrap text-center border-r border-l border-slate-200">
                         {surat.no_agenda}
                         <div className="text-[10px] text-slate-400 font-sans font-normal">
                           {surat.tgl_input.split(' ')[0]}
                         </div>
                       </td>
-                      <td className="py-3 px-3 max-w-sm">
+                      <td className="py-3 px-3 max-w-sm text-center border-r border-slate-200">
                         <p className="font-bold text-slate-900">{surat.asal_surat}</p>
                         <p className="text-[11px] text-slate-600 line-clamp-1 italic">"{surat.perihal}"</p>
                       </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 
+                         border border-emerald-200 whitespace-normal break-words leading-tight">
                           {surat.status_surat.replace(/_/g, ' ')}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-slate-700">
+                      <td className="py-3 px-3 text-slate-700 text-center border-r border-slate-200">
                         {surat.disposisi?.nama_bagian_tujuan || 'Meja Kepala Badan'}
                       </td>
-                      <td className="py-3 px-3 text-right">
+                      <td className="py-3 px-3 text-right text-center border-r border-slate-200">
                         <button
                           onClick={() => onLihatSurat(surat)}
                           className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer"
@@ -373,10 +631,10 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
         <div className="space-y-6">
 
           {/* TABEL 1: Dikembalikan oleh Kepala Bagian ke Sekretariat */}
-          <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+          <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4 min-h-[5px]">
             <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-extrabold text-amber-900 flex items-center gap-2">
+                <h3 className="text-[20px] font-extrabold text-amber-900 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-amber-600" />
                   <span>Surat Dikembalikan oleh Bagian</span>
                 </h3>
@@ -390,10 +648,10 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
             </div>
 
             <div className="max-h-[300px] overflow-y-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-              <table className="w-full text-left text-xs border-collapse min-w-[700px] whitespace-normal">
+              <table className="w-full text-left text-xs border-collapse min-w-[600px] whitespace-normal">
                 <thead className='sticky top-0 z-10'>
                   <tr className="bg-amber-50 text-amber-900 uppercase font-bold border-b border-amber-200">
-                    <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda</th>
+                    <th className="py-3 px-3 text-center border-r border-l border-slate-200">No. Agenda</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Asal, No, &amp; Perihal Surat</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Pengembali</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Alasan Pengembalian Bagian</th>
@@ -404,7 +662,7 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {dikembalikanDariBagianCount.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-6 text-slate-400">
+                      <td colSpan={6} className="text-center py-17 text-slate-400">
                         Tidak ada surat yang dikembalikan oleh Kepala Bagian.
                       </td>
                     </tr>
@@ -413,7 +671,7 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                       const latestReturn = surat.pengembalian?.[surat.pengembalian.length - 1];
                       return (
                         <tr key={surat.id} className="hover:bg-amber-50/40 transition">
-                          <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">{surat.no_agenda}</td>
+                          <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-l border-slate-200">{surat.no_agenda}</td>
                           <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
                             <p className="font-bold text-slate-900">{surat.asal_surat}</p>
                             <p className="text-[11px] text-slate-600 italic whitespace-normal">"{surat.perihal}"</p>
@@ -457,10 +715,10 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
           </div>
 
           {/* TABEL 2: Dikembalikan oleh Sekretariat ke Petugas Loket */}
-          <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+          <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4 min-h-[5px]">
             <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-extrabold text-red-900 flex items-center gap-2">
+                <h3 className="text-[20px] font-extrabold text-red-900 flex items-center gap-2">
                   <RotateCcw className="w-5 h-5 text-red-600" />
                   <span>Surat Dikembalikan ke Petugas Loket</span>
                 </h3>
@@ -474,10 +732,10 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
             </div>
 
             <div className="max-h-[300px] overflow-y-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-              <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+              <table className="w-full text-left text-xs border-collapse min-w-[600px]">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-red-50 text-red-900 uppercase font-bold border-b border-red-200">
-                    <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda</th>
+                    <th className="py-3 px-3 text-center border-r border-l border-slate-200">No. Agenda</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Asal &amp; Perihal Surat</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Petugas Loket</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Catatan Perbaikan</th>
@@ -487,7 +745,7 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {suratMasukList.filter((s) => s.status_surat === 'DIKEMBALIKAN_KE_LOKET').length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-6 text-slate-400">
+                      <td colSpan={5} className="text-center py-17 text-slate-400">
                         Tidak ada surat yang sedang dikembalikan ke Loket.
                       </td>
                     </tr>
@@ -498,7 +756,7 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                         const latestReturn = surat.pengembalian?.[surat.pengembalian.length - 1];
                         return (
                           <tr key={surat.id} className="hover:bg-red-50/40 transition">
-                            <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">
+                            <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-l border-slate-200">
                               {surat.no_agenda}
                             </td>
                             <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
@@ -537,13 +795,13 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
         <div className="space-y-6">
 
           {/* TABEL 1: ANTREAN DIAJUKAN KE KEPALA KANTOR */}
-          <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+          <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4 min-h-[225px]">
             <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-extrabold text-blue-900 flex items-center gap-2">
+                <h1 className="text-lg font-black text-blue-900 flex items-center gap-2">
                   <Send className="w-5 h-5 text-blue-600" />
                   <span>Penerusan Surat ke Kepala Badan</span>
-                </h3>
+                </h1>
                 <p className="text-xs text-slate-500">
                   Surat yang telah selesai diverifikasi oleh Sekretariat dan kini berada di meja kerja Kepala Badan untuk diterbitkan Lembar Disposisi.
                 </p>
@@ -558,7 +816,7 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
               <table className="w-full text-left text-xs border-collapse min-w-[700px]">
                 <thead className='sticky top-0 z-10'>
                   <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                    <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda</th>
+                    <th className="py-3 px-3 text-center border-r border-l border-slate-200">No. Agenda</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Asal, No, &amp; Perihal Surat</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Sifat</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200">Status Saat Ini</th>
@@ -568,14 +826,14 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {antreanKepalaKantor.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-slate-400">
+                      <td colSpan={6} className="text-center py-15 text-slate-400">
                         ✓ Tidak ada surat yang sedang menunggu disposisi Kepala Badan saat ini.
                       </td>
                     </tr>
                   ) : (
                     antreanKepalaKantor.map((surat) => (
                       <tr key={surat.id} className="hover:bg-slate-50/80 transition">
-                        <td className="py-3 px-3 font-mono font-bold text-blue-900 text-center border-r border-slate-200">
+                        <td className="py-3 px-3 font-mono font-bold text-blue-900 text-center border-r border-l border-slate-200">
                           <div className="w-full overflow-hidden breakwords whitespace-normal">
                             {surat.no_agenda}
                           </div>
@@ -608,7 +866,7 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                           </span>
                         </td>
                         <td className="py-3 px-3 text-center border-r border-slate-200">
-                          <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
+                          <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold whitespace-normal break-words leading-tight">
                             MENUNGGU DISPOSISI KEPALA KANTOR
                           </span>
                         </td>
@@ -630,13 +888,14 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
           </div>
 
           {/* TABEL 2: SIAP DITERUSKAN KE KEPALA BAGIAN */}
+          {/* TABEL 2: SIAP DITERUSKAN KE KEPALA BAGIAN */}
           <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
             <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-extrabold text-indigo-900 flex items-center gap-2">
+                <h1 className="text-lg font-extrabold text-indigo-950 flex items-center gap-2">
                   <Building className="w-5 h-5 text-indigo-600" />
                   <span>Penerusan Surat ke Kepala Bagian</span>
-                </h3>
+                </h1>
                 <p className="text-xs text-slate-500">
                   Surat masuk berdisposisi maupun naskah dinas antar-bagian yang telah disetujui Kepala Badan dan siap diteruskan ke Bagian tujuan.
                 </p>
@@ -646,21 +905,31 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
               </span>
             </div>
 
-            <div className="max-h-[300px] overflow-y-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-              <table className="w-full text-left text-xs border-collapse min-w-[700px]">
-                <thead className="sticky top-0 z-10">
+            <div className="max-h-[320px] overflow-auto rounded-xl">
+              <table className="w-full text-left text-xs border-collapse table-fixed min-w-[760px]">
+                <thead className="sticky top-0 z-10 bg-slate-50">
                   <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                    <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda / Draft</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Asal, No, &amp; Perihal Surat</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Tujuan Disposisi</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Instruksi / Persetujuan Kepala Badan</th>
-                    <th className="py-3 px-3 text-center border-r border-slate-200">Aksi Penerusan</th>
+                    <th className="w-[17%] py-3 px-3 text-center border-r border-l border-slate-200">
+                      No. Agenda / Draft
+                    </th>
+                    <th className="w-[25%] py-3 px-3 text-center border-r border-slate-200">
+                      Asal, No, &amp; Perihal Surat
+                    </th>
+                    <th className="w-[20%] py-3 px-3 text-center border-r border-slate-200">
+                      Bagian Tujuan Disposisi
+                    </th>
+                    <th className="w-[18%] py-3 px-3 text-center border-r border-slate-200">
+                      Instruksi / Persetujuan
+                    </th>
+                    <th className="w-[20%] py-3 px-3 text-center border-r border-slate-200">
+                      Aksi Penerusan
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {totalSiapDiteruskan === 0 ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-8 text-slate-400">
+                      <td colSpan={5} className="text-center py-12 text-slate-400">
                         ✓ Semua surat yang telah didisposisi / disetujui sudah berhasil diteruskan ke masing-masing Bagian tujuan.
                       </td>
                     </tr>
@@ -669,34 +938,28 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                       {/* 1. BARIS SURAT MASUK YANG SUDAH DIDISPOSISI */}
                       {siapDiteruskanKeBagian.map((surat) => (
                         <tr key={`sm-${surat.id}`} className="hover:bg-slate-50/80 transition">
-                          <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">
+                          <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-l border-slate-200 break-words">
                             <div>{surat.no_agenda}</div>
                             <span className="mt-1 inline-block px-1.5 py-0.5 text-[9px] font-bold rounded bg-blue-100 text-blue-800">
                               Surat Masuk
                             </span>
                           </td>
-                          <td className="py-3 px-3 max-w-xs text-center group cursor-pointer border-r border-slate-200">
-                            <div>
-                              <p className="font-bold text-slate-900">{surat.asal_surat}</p>
-                            </div>
-                            <div>
-                              <p className="text-[11px] font-bold inline-block whitespace-normal italic">
-                                {surat.no_surat}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-slate-600 italic inline-block whitespace-normal">
-                                {surat.perihal}
-                              </p>
-                            </div>
+                          <td className="py-3 px-3 text-center border-r border-slate-200 break-words">
+                            <p className="font-bold text-slate-900">{surat.asal_surat}</p>
+                            <p className="text-[11px] font-bold italic text-slate-700 mt-0.5">
+                              {surat.no_surat}
+                            </p>
+                            <p className="text-[10px] text-slate-600 italic line-clamp-2 mt-0.5">
+                              "{surat.perihal}"
+                            </p>
                           </td>
-                          <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
-                            <div className="flex items-center justify-center gap-1.5 font-extrabold text-purple-900 bg-purple-50 p-1.5 rounded-lg border border-purple-200">
-                              <Building className="w-3.5 h-3.5 text-purple-700" />
+                          <td className="py-3 px-3 text-center border-r border-slate-200">
+                            <div className="inline-flex items-center justify-center gap-1.5 font-bold text-purple-900 bg-purple-50 px-2.5 py-1.5 rounded-lg border border-purple-200 whitespace-normal leading-snug">
+                              <Building className="w-3.5 h-3.5 text-purple-700 shrink-0" />
                               <span>{surat.disposisi?.nama_bagian_tujuan}</span>
                             </div>
                           </td>
-                          <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
+                          <td className="py-3 px-3 text-center border-r border-slate-200">
                             <div className="text-[11px] text-slate-700 space-y-0.5">
                               {surat.disposisi?.instruksi.slice(0, 2).map((ins, i) => (
                                 <p key={i} className="whitespace-normal">
@@ -705,23 +968,26 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                               ))}
                             </div>
                           </td>
-                          <td className="py-3 px-3 whitespace-nowrap space-x-2 text-center border-r border-slate-200">
-                            <button
-                              onClick={() => onLihatSurat(surat)}
-                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold cursor-pointer"
-                            >
-                              Lihat Disposisi
-                            </button>
-                            <button
-                              onClick={() => {
-                                teruskanKeBagian(surat.id);
-                                alert(`Surat ${surat.no_agenda} dan lembar disposisi berhasil diteruskan ke ${surat.disposisi?.nama_bagian_tujuan}!`);
-                              }}
-                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-xs inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                              <span>Teruskan ke Bagian</span>
-                            </button>
+                          <td className="py-3 px-3 text-center border-r border-slate-200">
+                            <div className="flex flex-col items-center gap-1.5">
+                              <button
+                                onClick={() => onLihatSurat(surat)}
+                                className="w-full justify-center px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer transition"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Lihat Disposisi</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  teruskanKeBagian(surat.id);
+                                  alert(`Surat ${surat.no_agenda} dan lembar disposisi berhasil diteruskan ke ${surat.disposisi?.nama_bagian_tujuan}!`);
+                                }}
+                                className="w-full justify-center px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-xs inline-flex items-center gap-1 cursor-pointer transition"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Teruskan ke Bagian</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -729,60 +995,51 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                       {/* 2. BARIS SURAT KELUAR INTERNAL YANG DISETUJUI KEPALA BADAN */}
                       {suratKeluarSiapDiteruskan.map((sk) => (
                         <tr key={`sk-${sk.id}`} className="hover:bg-emerald-50/30 transition">
-                          <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-slate-200">
+                          <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-l border-slate-200 break-words">
                             <div>{sk.no_draft}</div>
-                            <span className="mt-1 inline-block px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-100 text-emerald-800">
+                            <span className="mt-1 inline-block px-1.5 py-0.5 text-[9px] font-bold rounded bg-indigo-100 text-indigo-800">
                               {sk.jenis_naskah || 'Nota Dinas'}
                             </span>
                           </td>
-                          <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
-                            <div>
-                              <p className="font-bold text-slate-900">Dari: {sk.nama_bagian_pengirim}</p>
-                            </div>
-                            <div>
-                              <p className="text-[11px] font-bold inline-block whitespace-normal italic text-slate-700">
-                                {sk.no_draft}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-slate-600 italic inline-block whitespace-normal">
-                                {sk.perihal}
-                              </p>
-                            </div>
+                          <td className="py-3 px-3 text-center border-r border-slate-200 break-words">
+                            <p className="font-bold text-slate-900">Dari: {sk.nama_bagian_pengirim}</p>
+                            <p className="text-[11px] text-slate-600 line-clamp-2 italic mt-0.5">
+                              "{sk.perihal}"
+                            </p>
                           </td>
-                          <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
-                            <div className="flex items-center justify-center gap-1.5 font-extrabold text-purple-900 bg-purple-50 p-1.5 rounded-lg border border-purple-200">
-                              <Building className="w-3.5 h-3.5 text-purple-700" />
+                          <td className="py-3 px-3 text-center border-r border-slate-200">
+                            <div className="inline-flex items-center justify-center gap-1.5 font-bold text-purple-900 bg-purple-50 px-2.5 py-1.5 rounded-lg border border-purple-200 whitespace-normal leading-snug">
+                              <Building className="w-3.5 h-3.5 text-purple-700 shrink-0" />
                               <span>{sk.nama_bagian_tujuan}</span>
                             </div>
                           </td>
-                          <td className="py-3 px-3 max-w-xs text-center border-r border-slate-200">
-                            <div className="text-[11px] text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg p-1.5 space-y-0.5">
-                              <p className="font-bold">✓ Disetujui Kepala Badan</p>
-                              <p className="text-[10px] text-slate-600 whitespace-normal">
-                                Naskah dinas siap diteruskan ke bagian tujuan
-                              </p>
-                            </div>
+                          <td className="py-3 px-3 text-center border-r border-slate-200">
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-normal leading-tight inline-block">
+                              DISETUJUI KEPALA BADAN
+                            </span>
                           </td>
-                          <td className="py-3 px-3 whitespace-nowrap space-x-2 text-center border-r border-slate-200">
-                            {onLihatSuratKeluar && (
+                          <td className="py-3 px-3 text-center border-r border-slate-200">
+                            <div className="flex flex-col items-center gap-1.5">
+                              {onLihatSuratKeluar && (
+                                <button
+                                  onClick={() => onLihatSuratKeluar(sk)}
+                                  className="w-full justify-center px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer transition"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Lihat Naskah</span>
+                                </button>
+                              )}
                               <button
-                                onClick={() => onLihatSuratKeluar(sk)}
-                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold cursor-pointer"
+                                onClick={() => {
+                                  teruskanSuratKeluar(sk.id);
+                                  alert(`Naskah internal ${sk.no_draft} berhasil diteruskan ke ${sk.nama_bagian_tujuan}!`);
+                                }}
+                                className="w-full justify-center px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-xs inline-flex items-center gap-1 cursor-pointer transition"
                               >
-                                Lihat Naskah
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Teruskan ke Bagian</span>
                               </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                teruskanSuratKeluar(sk.id);
-                                alert(`Naskah ${sk.no_draft} berhasil diteruskan ke ${sk.nama_bagian_tujuan}!`);
-                              }}
-                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-xs inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                              <span>Teruskan ke Bagian</span>
-                            </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -806,10 +1063,10 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
             <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
               <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <h1 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
                     <FileCheck2 className="w-5 h-5 text-emerald-600" />
                     <span>Status Penerusan &amp; Tindak Lanjut Surat Masuk</span>
-                  </h3>
+                  </h1>
                   <p className="text-xs text-slate-500">
                     Pantau progres pengerjaan surat masuk yang telah diteruskan Sekretariat ke masing-masing Kepala Bagian.
                   </p>
@@ -830,15 +1087,15 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                 </span>
               </div>
 
-              <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-                <table className="w-full text-left text-xs border-collapse min-w-[700px]">
-                  <thead>
+              <div className=" w-full overflow-y-auto max-h-[180px]">
+                <table className="w-full text-left text-xs border-collapse table-fixed">
+                  <thead className='sticky top-0 z-10 bg-slate-50'>
                     <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                      <th className="py-3 px-3 text-center border-r border-slate-200">No. Agenda</th>
-                      <th className="py-3 px-3 text-center border-r border-slate-200">Asal &amp; Perihal Surat</th>
-                      <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Tujuan</th>
-                      <th className="py-3 px-3 text-center border-r border-slate-200">Status Pengerjaan</th>
-                      <th className="py-3 px-3 text-center border-r border-slate-200">Aksi</th>
+                      <th className="w-[14%] py-2 px-2 text-center border-r border-slate-200">No. Agenda</th>
+                      <th className="w-[32%] py-2 px-2 text-center border-r border-slate-200">Asal &amp; Perihal Surat</th>
+                      <th className="w-[18%] py-2 px-2 text-center border-r border-slate-200">Bagian Tujuan</th>
+                      <th className="w-[20%] py-2 px-2 text-center border-r border-slate-200">Status Pengerjaan</th>
+                      <th className="w-[16%] py-2 px-2 text-center border-r border-slate-200">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -852,7 +1109,7 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                       ].includes(s.status_surat)
                     ).length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="text-center py-8 text-slate-400">
+                        <td colSpan={5} className="text-center py-15 text-slate-400 whitespace-normal break-words leading-tight">
                           Belum ada surat masuk yang diteruskan ke bagian tujuan.
                         </td>
                       </tr>
@@ -873,13 +1130,13 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                               {surat.no_agenda}
                             </td>
                             <td className="py-3 px-3 max-w-xs border-r border-slate-200">
-                              <p className="font-bold text-slate-900">{surat.asal_surat}</p>
-                              <p className="text-[11px] text-slate-600 line-clamp-1 italic">"{surat.perihal}"</p>
+                              <p className="font-bold text-slate-900 text-center">{surat.asal_surat}</p>
+                              <p className="text-[11px] text-slate-600 line-clamp-1 italic text-center">"{surat.perihal}"</p>
                             </td>
                             <td className="py-3 px-3 text-center font-bold text-purple-900 border-r border-slate-200">
                               {surat.disposisi?.nama_bagian_tujuan || '-'}
                             </td>
-                            <td className="py-3 px-3 text-center border-r border-slate-200">
+                            <td className="py-3 px-3 text-center border-r border-slate-200 whitespace-normal break-words leading-tight">
                               <span
                                 className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${surat.status_surat === 'SELESAI' || surat.status_surat === 'ARSIP'
                                   ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
@@ -928,15 +1185,15 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                 </span>
               </div>
 
-              <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-                <table className="w-full text-left text-xs border-collapse min-w-[700px]">
-                  <thead>
+              <div className="w-full overflow-y-auto max-h-[180px]">
+                <table className="w-full text-left text-xs border-collapse table-fixed">
+                  <thead className='sticky top-0 z-10 bg-slate-50'>
                     <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                      <th className="py-3 px-3 text-center border-r border-slate-200">No. Draft</th>
-                      <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Pengirim &amp; Perihal</th>
-                      <th className="py-3 px-3 text-center border-r border-slate-200">Bagian Tujuan</th>
-                      <th className="py-3 px-3 text-center border-r border-slate-200">Status Penerusan</th>
-                      <th className="py-3 px-3 text-center border-r border-slate-200">Aksi</th>
+                      <th className="w-[14%] py-2 px-2 text-center border-r border-slate-200">No. Draft</th>
+                      <th className="w-[32%] py-2 px-2 text-center border-r border-slate-200">Bagian Pengirim &amp; Perihal</th>
+                      <th className="w-[18%] py-2 px-2 text-center border-r border-slate-200">Bagian Tujuan</th>
+                      <th className="w-[20%] py-2 px-2 text-center border-r border-slate-200">Status Penerusan</th>
+                      <th className="w-[16%] py-2 px-2 text-center border-r border-slate-200">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -959,14 +1216,15 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                               </span>
                             </td>
                             <td className="py-3 px-3 max-w-xs border-r border-slate-200">
-                              <p className="font-bold text-slate-900">Dari: {sk.nama_bagian_pengirim}</p>
-                              <p className="text-[11px] text-slate-600 line-clamp-1 italic">"{sk.perihal}"</p>
+                              <p className="font-bold text-slate-900 text-center">Dari: {sk.nama_bagian_pengirim}</p>
+                              <p className="text-[11px] text-slate-600 line-clamp-1 italic text-center">"{sk.perihal}"</p>
                             </td>
                             <td className="py-3 px-3 text-center font-bold text-purple-900 border-r border-slate-200">
                               {sk.nama_bagian_tujuan}
                             </td>
                             <td className="py-3 px-3 text-center border-r border-slate-200">
-                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 
+                              border border-emerald-300 whitespace-normal break-words leading-tight inline-block">
                                 DITERUSKAN KE BAGIAN TUJUAN
                               </span>
                             </td>
@@ -1008,30 +1266,18 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
-                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-200 transition cursor-pointer"
+                  onClick={handleExportPDF}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Cetak Laporan</span>
+                  <span>Ekspor PDF</span>
                 </button>
                 <button
-                  onClick={() => {
-                    const csvRows = [
-                      ['Bulan', 'Surat Masuk', 'Surat Keluar', 'Disposisi'],
-                      ...rekapitulasiBulanan.map((r) => [r.bulan, r.masuk, r.keluar, r.disposisi])
-                    ];
-                    const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map((e) => e.join(',')).join('\n');
-                    const encodedUri = encodeURI(csvContent);
-                    const link = document.createElement('a');
-                    link.setAttribute('href', encodedUri);
-                    link.setAttribute('download', 'rekapitulasi_persuratan_bkpsdmd_2026.csv');
-                    document.body.appendChild(link);
-                    link.click();
-                  }}
+                  onClick={handleExportExcel}
                   className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Ekspor CSV/Excel</span>
+                  <span>Ekspor Excel</span>
                 </button>
               </div>
             </div>
@@ -1095,10 +1341,10 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3">
                 Tabel Rincian Data Rekapitulasi Persuratan
               </h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse border border-slate-200 rounded-xl overflow-hidden">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+              <div className="w-full overflow-y-auto">
+                <table className="w-full text-left text-xs border-collapse border border-slate-200 rounded-xl max-h-[260px]">
+                  <thead className='sticky top-0 z-10 bg-slate-50'>
+                    <tr className="bg-slate-100 text-slate-700 uppercase tracking-widder font-bold border-b border-slate-200">
                       <th className="py-2.5 px-3 border-r border-slate-200">Bulan Pelaporan</th>
                       <th className="py-2.5 px-3 text-center border-r border-slate-200">Surat Masuk</th>
                       <th className="py-2.5 px-3 text-center border-r border-slate-200">Surat Keluar</th>
@@ -1111,10 +1357,10 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                       const rasio = row.masuk > 0 ? Math.round((row.disposisi / row.masuk) * 100) : 0;
                       return (
                         <tr key={i} className="hover:bg-slate-50 transition">
-                          <td className="py-2 px-3 font-semibold text-slate-900">{row.bulan}</td>
-                          <td className="py-2 px-3 text-center font-mono">{row.masuk}</td>
-                          <td className="py-2 px-3 text-center font-mono">{row.keluar}</td>
-                          <td className="py-2 px-3 text-center font-mono">{row.disposisi}</td>
+                          <td className="py-2 px-3 font-semibold text-slate-900 border-r border-l border-slate-200">{row.bulan}</td>
+                          <td className="py-2 px-3 text-center font-mono border-r border-l border-slate-200">{row.masuk}</td>
+                          <td className="py-2 px-3 text-center font-mono border-r border-l border-slate-200">{row.keluar}</td>
+                          <td className="py-2 px-3 text-center font-mono border-r border-l border-slate-200">{row.disposisi}</td>
                           <td className="py-2 px-3 text-center">
                             <span
                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rasio >= 90
@@ -1205,6 +1451,13 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
               </div>
             </div>
           </div>
+        )
+      }
+      {
+        activeMenu === 'arsip' && (
+          <ArsipSurat onLihatSurat={onLihatSurat}
+            onLihatSuratKeluar={onLihatSuratKeluar}
+          />
         )
       }
 

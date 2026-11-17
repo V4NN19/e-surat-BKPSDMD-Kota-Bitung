@@ -135,62 +135,6 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right Controls: User Profile + Role Switcher & Database Actions */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
 
-          {/* Tombol Skema SQL & API */}
-          <button
-            onClick={onOpenSchemaModal}
-            className="p-2 sm:px-2.5 sm:py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-650 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition shadow-xs cursor-pointer"
-            title="Lihat skema SQL XAMPP 7.3 & arsitektur Controller"
-          >
-            <Database className="w-4 h-4 text-indigo-400 shrink-0" />
-            <span className="hidden xl:inline">Skema SQL &amp; API</span>
-          </button>
-
-          {/* Quick Role Switcher Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowRoleMenu(!showRoleMenu)}
-              className="p-2 sm:px-2.5 sm:py-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-emerald-700/60 transition shadow-xs cursor-pointer"
-              title="Ganti Peran Pengguna untuk Pengujian Alur"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="hidden sm:inline">Role:</span>
-              <span className="text-white bg-emerald-800/80 px-1.5 sm:px-2 py-0.5 rounded font-mono text-[10px] sm:text-[11px]">
-                {currentUser?.role || 'PILIH'}
-              </span>
-              <ChevronDown className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            </button>
-
-            {showRoleMenu && (
-              <div
-                className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-2 z-50 text-xs animate-scale-up"
-                onMouseLeave={() => setShowRoleMenu(false)}
-              >
-                <div className="px-3 py-1.5 border-b border-slate-800 text-[11px] font-semibold text-slate-400">
-                  Ganti Akun / Peran (5 Role Sistem):
-                </div>
-                {users.map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => {
-                      switchUser(u.id);
-                      setShowRoleMenu(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-800 transition cursor-pointer ${currentUser?.id === u.id ? 'bg-emerald-950/70 border-l-2 border-emerald-400' : ''
-                      }`}
-                  >
-                    <div className="truncate pr-2">
-                      <p className="font-bold text-slate-200 truncate">{u.nama}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{u.jabatan}</p>
-                    </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold shrink-0 ${getRoleBadge(u.role).bg}`}>
-                      {u.role.replace('_', ' ')}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* PROFIL PENGGUNA (PINDAHAN DARI SIDEBAR) */}
           {currentUser && (
             <div className="flex items-center gap-2.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-white shadow-xs">

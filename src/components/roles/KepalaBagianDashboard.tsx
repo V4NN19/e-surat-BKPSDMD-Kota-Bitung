@@ -9,8 +9,6 @@ import { usePersuratan } from '../../context/PersuratanContext';
 import { SuratMasuk, SuratKeluar, SifatSurat, SuratKeluarVersiFile } from '../../types';
 import {
   Briefcase,
-  FileText,
-  Clock,
   CheckCircle,
   RotateCcw,
   UploadCloud,
@@ -18,12 +16,6 @@ import {
   Eye,
   Layers,
   AlertTriangle,
-  Building,
-  FilePlus,
-  ListOrdered,
-  ChevronRight,
-  Sparkles,
-  Archive
 } from 'lucide-react';
 
 interface KepalaBagianDashboardProps {
@@ -38,8 +30,6 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
   onLihatSuratMasuk,
   onLihatSuratKeluar,
   activeMenu,
-  onSelectMenu,
-  arsipkanSurat
 }) => {
   const {
     currentUser,
@@ -50,7 +40,8 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
     kembalikanKeSekretariat,
     buatSuratKeluar,
     uploadRevisiSuratKeluar,
-    tandaiNaskahDiterima
+    tandaiNaskahDiterima,
+    arsipkanSurat: arsipkanSuratMasuk,
   } = usePersuratan();
 
   // Memilih bagian aktif yang sedang dilihat
@@ -64,7 +55,7 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
 
   // Filter Status Persuratan langsung di dalam tab daftar surat
   const [statusFilterMasuk, setStatusFilterMasuk] = useState<
-    'SEMUA' | 'DITERUSKAN_KE_BAGIAN' | 'SEDANG_DIPROSES' | 'SELESAI' | 'DIKEMBALIKAN_KE_SEKRETARIAT' | 'ARSIP'
+    'SEMUA' | 'DITERUSKAN_KE_BAGIAN' | 'SEDANG_DIPROSES' | 'SELESAI' | 'DIKEMBALIKAN_KE_SEKRETARIAT'
   >('SEMUA');
 
   // Modal Kembalikan ke Sekretariat (salah sasaran)
@@ -100,8 +91,8 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
       (s.status_surat === 'DITERUSKAN_KE_BAGIAN' ||
         s.status_surat === 'SEDANG_DIPROSES' ||
         s.status_surat === 'SELESAI' ||
-        s.status_surat === 'DIKEMBALIKAN_KE_SEKRETARIAT' ||
-        s.status_surat === 'ARSIP')
+        s.status_surat === 'DIKEMBALIKAN_KE_SEKRETARIAT'
+      )
   );
 
   const countSemua = suratMasukBagian.length;
@@ -109,7 +100,6 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
   const countSedangDiproses = suratMasukBagian.filter((s) => s.status_surat === 'SEDANG_DIPROSES').length;
   const countSelesai = suratMasukBagian.filter((s) => s.status_surat === 'SELESAI').length;
   const countKembalikan = suratMasukBagian.filter((s) => s.status_surat === 'DIKEMBALIKAN_KE_SEKRETARIAT').length;
-  const countArsip = suratMasukBagian.filter((s) => s.status_surat === 'ARSIP').length;
   const [sifatSurat, setSifatSurat] = useState<string>('');
   // Sinkronisasi dengan menu Sidebar
   React.useEffect(() => {
@@ -238,9 +228,6 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
       {/* Subheader & Bagian Switcher */}
       <div className="rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-purple-100 rounded-xl text-purple-700 border border-purple-200">
-            <Briefcase className="w-6 h-6" />
-          </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
@@ -330,18 +317,7 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                 </span>
               </button>
 
-              <button
-                onClick={() => setStatusFilterMasuk('ARSIP')}
-                className={`px-3 py-1.5 rounded-lg border transition whitespace-nowrap flex items-center gap-1.5 ${statusFilterMasuk === 'ARSIP'
-                  ? 'bg-slate-700 text-white border-slate-700 shadow-xs font-bold'
-                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
-                  }`}
-              >
-                <span>Arsip</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${statusFilterMasuk === 'ARSIP' ? 'bg-slate-800 text-white' : 'bg-slate-300 text-slate-800'}`}>
-                  {countArsip}
-                </span>
-              </button>
+
 
               <button
                 onClick={() => setStatusFilterMasuk('DIKEMBALIKAN_KE_SEKRETARIAT')}
@@ -458,22 +434,6 @@ export const KepalaBagianDashboard: React.FC<KepalaBagianDashboardProps> = ({
                             >
                               <CheckCircle className="w-3.5 h-3.5" />
                               <span>Tandai Selesai</span>
-                            </button>
-                          )}
-
-                          {/* AKSI ARSIPKAN: Menyimpan surat yang telah SELESAI ke Arsip sebagai proses akhir */}
-                          {surat.status_surat === 'SELESAI' && (
-                            <button
-                              onClick={() => {
-                                if (confirm(`Apakah Anda yakin ingin mengarsipkan surat ${surat.no_agenda}?`)) {
-                                  updateStatusPengerjaan(surat.id, 'ARSIP' as any);
-                                }
-                              }}
-                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold shadow-xs inline-flex items-center gap-1"
-                              title="Simpan surat ke arsip sebagai proses akhir"
-                            >
-                              <Archive className="w-3.5 h-3.5" />
-                              <span>Arsipkan</span>
                             </button>
                           )}
                         </td>

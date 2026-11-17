@@ -24,6 +24,7 @@ import {
   Filter,
 } from 'lucide-react';
 
+
 interface LoketDashboardProps {
   onLihatSurat: (surat: SuratMasuk) => void;
   activeMenu?: string;
@@ -55,12 +56,51 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
   const [noSurat, setNoSurat] = useState('');
   const [tglSurat, setTglSurat] = useState(new Date().toISOString().split('T')[0]);
   const [perihal, setPerihal] = useState('');
-  const [sifat, setSifat] = useState<SifatSurat>('Biasa');
+  const [sifat, setSifat] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [selectedFileUrl, setSelectedFileUrl] = useState<string>('');
   const [fileError, setFileError] = useState('');
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
+
+  const [suratBuatUlang, setSuratBuatUlang] = useState<SuratMasuk | null>(null);
+
+  const handleBuatUlang = (sm: SuratMasuk) => {
+    setSuratBuatUlang(sm);
+
+    // Isi otomatis seluruh field form dari data surat yang dikembalikan
+    setIdKategori((sm as any).id_kategori || (sm as any).kategori_id || kategoriList[0]?.id || 1);
+    setAsalSurat(sm.asal_surat || '');
+    setNoSurat(sm.no_surat || '');
+    setTglSurat(sm.tgl_surat ? String(sm.tgl_surat).split('T')[0] : new Date().toISOString().split('T')[0]);
+    setPerihal(sm.perihal || '');
+    setSifat(sm.sifat || 'Biasa');
+
+    // Kosongkan file lama agar petugas mengunggah ulang scan PDF yang diperbaiki
+    setSelectedFile(null);
+    setSelectedFileName('');
+    setSelectedFileUrl('');
+    setFileError('');
+
+    // Pindah otomatis ke tab Form Registrasi Surat Masuk ('input')
+    setActiveTab('input');
+    if (onSelectMenu) {
+      onSelectMenu('input');
+    }
+  };
+
+  const handleBatalBuatUlang = () => {
+    setSuratBuatUlang(null);
+    setAsalSurat('');
+    setNoSurat('');
+    setTglSurat(new Date().toISOString().split('T')[0]);
+    setPerihal('');
+    setSifat('');
+    setSelectedFile(null);
+    setSelectedFileName('');
+    setSelectedFileUrl('');
+    setFileError('');
+  };
 
   // Filter Daftar Surat
   const [filterMinggu, setFilterMinggu] = useState<'semua' | 'minggu_ini' | 'bulan_ini'>('semua');
@@ -168,6 +208,14 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
     if (!selectedFile || !selectedFileName) {
       setFileError('Wajib melampirkan berkas scan surat fisik dalam format PDF sebelum menyimpan!');
       alert('Surat masuk WAJIB melampirkan berkas PDF scan fisik surat! Silakan pilih file PDF terlebih dahulu.');
+      return;
+    }
+    if (!sifat) {
+      alert('Silakan pilih Sifat Dokumen Surat terlebih dahulu (Segera, Sangat Segera, atau Rahasia).');
+      return;
+    }
+    if (!kategoriList) {
+      alert('Silahkan pilih kategori surat dahulu. jika kategori belum ada, silahkan hubungi admin.');
       return;
     }
 
@@ -288,6 +336,28 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
       default:
         return 'bg-slate-100 text-slate-800 border-slate-300';
     }
+  };
+
+  const formatWaktuInput = (tanggal?: string) => {
+    if (!tanggal) return '-';
+    const date = new Date(tanggal);
+    if (isNaN(date.getTime())) return tanggal;
+
+    const tgl = date.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    const jam = date
+      .toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+      .replace('.', ':');
+
+    return `${tgl} • ${jam} WITA`;
   };
 
   return (
@@ -513,6 +583,7 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
                   </button>
                   <button
                     type="submit"
+                    disabled={!selectedFile || !kategoriList || !sifat || !asalSurat || !noSurat || !perihal}
                     className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md shadow-blue-600/30 transition cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
@@ -615,17 +686,17 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
             </div>
 
             {/* Table (Responsif dengan Horizontal Scroll di Ponsel & Tablet) */}
-            <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-              <table className="w-full text-left border-collapse text-xs min-w-[720px]">
-                <thead>
+            <div className="overflow-y-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className='sticky top-0 z-10 bg-slate-50'>
                   <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
-                    <th className="py-3 px-3">No. Agenda</th>
-                    <th className="py-3 px-3">Nomor &amp; Asal Surat</th>
-                    <th className="py-3 px-3">Kategori</th>
-                    <th className="py-3 px-3">Sifat</th>
-                    <th className="py-3 px-3">Petugas Input</th>
-                    <th className="py-3 px-3">Status Surat</th>
-                    <th className="py-3 px-3 text-right">Aksi</th>
+                    <th className="w-[14%]py-2 px-3 text-center border-l border-r border-slate-200">No. Agenda</th>
+                    <th className="w-[32%] py-2 px-3 text-center border-r border-slate-200">Nomor &amp; Asal Surat</th>
+                    <th className="w-[18%] py-2 px-3 text-center border-r border-slate-200">Kategori</th>
+                    <th className="w-[14%] py-2 px-3 text-center border-r border-slate-200">Sifat</th>
+                    <th className="w-[12%] py-2 px-3 text-center border-r border-slate-200">Petugas Input</th>
+                    <th className="w-[10%] py-2 px-3 text-center border-r border-slate-200">Status Surat</th>
+                    <th className="w-[10%] py-2 px-3 text-center border-r border-slate-200">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -640,15 +711,15 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
                       <tr key={surat.id} className="hover:bg-slate-50/80 transition">
 
                         {/* No Agenda */}
-                        <td className="py-3 px-3 font-mono font-bold text-blue-900 whitespace-nowrap">
-                          {surat.no_agenda}
-                          <div className="text-[10px] text-slate-400 font-sans font-normal">
-                            {surat.tgl_input.split(' ')[0]}
+                        <td className="py-3 px-3 font-mono font-bold text-blue-900 whitespace-nowrap text-center border-l border-r border-slate-200">
+                          <div className="font-bold text-blue-900 text-xs">{surat.no_agenda}</div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            {formatWaktuInput(surat.tgl_input)}
                           </div>
                         </td>
 
                         {/* Nomor & Asal Surat */}
-                        <td className="py-3 px-3 max-w-xs">
+                        < td className="py-3 px-3 max-w-xs text-center border-r border-slate-200" >
                           <p className="font-bold text-slate-900 line-clamp-1">{surat.asal_surat}</p>
                           <p className="text-[11px] font-mono text-slate-500">{surat.no_surat}</p>
                           <p className="text-[11px] text-slate-600 line-clamp-1 italic mt-0.5">
@@ -657,16 +728,16 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
                         </td>
 
                         {/* Kategori */}
-                        <td className="py-3 px-3">
-                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
+                        <td className="text-center border-r border-slate-200 py-3 px-3 whitespace-normal break-words leading-tight">
+                          <span className="inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
                             {surat.nama_kategori || 'Umum'}
                           </span>
                         </td>
 
                         {/* Sifat */}
-                        <td className="py-3 px-3">
+                        <td className="py-3 px-3 text-center border-r border-slate-200">
                           <span
-                            className={`px-2 py-0.5 rounded font-semibold text-[11px] ${surat.sifat === 'Sangat Segera'
+                            className={`inline-block px-2 py-0.5 rounded-full font-semibold text-[11px] ${surat.sifat === 'Sangat Segera'
                               ? 'bg-red-100 text-red-800'
                               : surat.sifat === 'Segera'
                                 ? 'bg-amber-100 text-amber-800'
@@ -680,14 +751,14 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
                         </td>
 
                         {/* Petugas Input */}
-                        <td className="py-3 px-3 whitespace-nowrap">
+                        <td className="py-3 px-3 whitespace-nowrap text-center border-r border-slate-200">
                           <span className="font-semibold text-slate-800">{surat.nama_petugas_loket}</span>
                         </td>
 
                         {/* Status Surat Badge */}
-                        <td className="py-3 px-3 whitespace-nowrap">
+                        <td className="py-3 px-3 whitespace-normal break-words leading-tight text-center border-r border-slate-200">
                           <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${getStatusBadge(
+                            className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${getStatusBadge(
                               surat.status_surat
                             )}`}
                           >
@@ -702,7 +773,7 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
                         </td>
 
                         {/* Aksi */}
-                        <td className="py-3 px-3 text-right whitespace-nowrap">
+                        <td className="py-3 px-3 text-center whitespace-nowrap border-r border-slate-200 ">
                           <button
                             onClick={() => onLihatSurat(surat)}
                             className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg transition inline-flex items-center gap-1 text-xs"
@@ -710,6 +781,17 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
                             <Eye className="w-3.5 h-3.5" />
                             <span>Lihat Surat</span>
                           </button>
+                          {surat.status_surat === 'DIKEMBALIKAN_KE_LOKET' && (
+                            < button
+                              type="button"
+                              onClick={() => handleBuatUlang(surat)}
+                              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs inline-flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                              title="Isi ulang form berdasarkan surat ini"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Buat Ulang</span>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -717,7 +799,7 @@ export const LoketDashboard: React.FC<LoketDashboardProps> = ({
                 </tbody>
               </table>
             </div>
-          </div>
+          </div >
         )
       }
     </div >

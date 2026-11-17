@@ -160,25 +160,6 @@ const MainAppContent: React.FC = () => {
         </main>
       </div>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-3.5 text-center text-xs text-slate-500 z-10">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>
-            Badan Kepegawaian dan Pengembangan Sumber Daya Manusia Daerah (BKPSDMD) Kota Bitung
-          </span>
-          <div className="flex items-center gap-4 text-[11px] text-slate-400">
-            <span>SOP Tata Naskah Dinas Digital</span>
-            <span>•</span>
-            <button
-              onClick={() => setSchemaModalOpen(true)}
-              className="text-indigo-600 hover:text-indigo-800 font-semibold underline cursor-pointer"
-            >
-              Skema Database XAMPP 7.3 &amp; Backend API
-            </button>
-          </div>
-        </div>
-      </footer>
-
       {/* Modal PDF Viewer & Lembar Disposisi */}
       <ModalPdfViewer
         isOpen={pdfModalOpen}

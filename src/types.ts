@@ -23,7 +23,8 @@ export type StatusSuratKeluar =
   | 'REVISI'
   | 'DISETUJUI_KEPALA_BADAN'
   | 'DITERUSKAN_KE_BAGIAN_TUJUAN'
-  | 'DITERIMA_BAGIAN_TUJUAN';
+  | 'DITERIMA_BAGIAN_TUJUAN'
+  | 'DIARSIPKAN';
 
 export interface User {
   id: number;

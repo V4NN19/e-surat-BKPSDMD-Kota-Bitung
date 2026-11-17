@@ -4,7 +4,8 @@
  * Manajemen Pengguna, Master Data (Kategori, Bagian, Instruksi Disposisi), Rekapitulasi, & Audit Trail Log Aktivitas
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import LOGO_KOTA_BITUNG_SULAWESI_UTARA from "../../assets/LOGO_KOTA_BITUNG_SULAWESI_UTARA.png";
 import { usePersuratan } from '../../context/PersuratanContext';
 import { User, UserRole } from '../../types';
 import {
@@ -29,7 +30,9 @@ import {
   RotateCcw,
   Clock,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -108,12 +111,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [masterEditingId, setMasterEditingId] = useState<number | null>(null);
   const [masterField1, setMasterField1] = useState(''); // Nama / Kode
   const [masterField2, setMasterField2] = useState(''); // Keterangan / Nama Bagian
+  const [showPassword, setShowPassword] = useState(false);
 
   // Open Modal Tambah/Edit User
   const handleOpenUserModal = (user?: User) => {
     if (user) {
       setEditingUserId(user.id);
       setUserNama(user.nama);
+      setShowPassword(false);
       setUserNip(user.nip || '');
       setUserUsername(user.username);
       setUserPassword('');
@@ -227,6 +232,78 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return matchesRole && matchesSearch;
   });
 
+  // Helper membaca indeks bulan (0 = Jan ... 11 = Des) dari tanggal database
+  const getBulanIndex = (rawDate?: string): number | null => {
+    if (!rawDate) return null;
+    const str = String(rawDate).trim();
+    const tahunSekarang = new Date().getFullYear();
+
+    // 1. Format ISO / SQL: "2026-11-18..."
+    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const tahun = Number(isoMatch[1]);
+      const bulan = Number(isoMatch[2]) - 1;
+      return tahun === tahunSekarang && bulan >= 0 && bulan <= 11 ? bulan : null;
+    }
+
+    // 2. Format teks Indonesia: "17 Nov 2026 • 19:07 WITA"
+    const namaBulan = ['jan', 'feb', 'mar', 'apr', 'mei', 'jun', 'jul', 'agu', 'sep', 'okt', 'nov', 'des'];
+    const lower = str.toLowerCase();
+    if (!lower.includes(String(tahunSekarang))) return null;
+
+    for (let i = 0; i < namaBulan.length; i++) {
+      if (lower.includes(namaBulan[i])) return i;
+    }
+    return null;
+  };
+
+  // Hitung rekap 12 bulan otomatis dari database (mulai dari 0)
+  const rekapBulananDb = useMemo(() => {
+    const daftarBulan = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+
+    const hasil = daftarBulan.map((nama) => ({
+      bulan: nama,
+      masuk: 0,
+      keluar: 0,
+      disposisi: 0,
+      selesai: 0,
+    }));
+
+    (suratMasukList || []).forEach((sm: any) => {
+      const idx = getBulanIndex(sm.tgl_input || sm.created_at || sm.tgl_surat);
+      if (idx !== null) {
+        hasil[idx].masuk += 1;
+        if (sm.disposisi) hasil[idx].disposisi += 1;
+        if (sm.status_surat === 'ARSIP' || sm.status_surat === 'SELESAI' || sm.disposisi) {
+          hasil[idx].selesai += 1;
+        }
+      }
+    });
+
+    (suratKeluarList || []).forEach((sk: any) => {
+      const idx = getBulanIndex(sk.tgl_dibuat || sk.created_at);
+      if (idx !== null) {
+        hasil[idx].keluar += 1;
+        if (sk.status_persetujuan === 'DISETUJUI_KEPALA_BADAN') {
+          hasil[idx].selesai += 1;
+        }
+      }
+    });
+
+    return hasil.map((item) => {
+      const total = item.masuk + item.keluar;
+      return {
+        bulan: item.bulan,
+        masuk: item.masuk,
+        keluar: item.keluar,
+        disposisi: item.disposisi,
+        rasio: total > 0 ? Math.round((item.selesai / total) * 100) : 0,
+      };
+    });
+  }, [suratMasukList, suratKeluarList]);
   return (
     <div className="space-y-6">
       {/* VIEW: MENUNGGU VERIFIKASI (ADMIN) */}
@@ -733,40 +810,176 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {
         !isStatusView && activeTab === 'rekap' && (() => {
           // Data rekapitulasi 12 bulan
-          const rekapitulasiBulanan = [
-            { bulan: 'Januari', masuk: 24, keluar: 18, disposisi: 22 },
-            { bulan: 'Februari', masuk: 31, keluar: 22, disposisi: 29 },
-            { bulan: 'Maret', masuk: 28, keluar: 20, disposisi: 26 },
-            { bulan: 'April', masuk: 35, keluar: 27, disposisi: 33 },
-            { bulan: 'Mei', masuk: 29, keluar: 21, disposisi: 28 },
-            { bulan: 'Juni', masuk: 42, keluar: 30, disposisi: 39 },
-            { bulan: 'Juli', masuk: 38, keluar: 25, disposisi: 35 },
-            { bulan: 'Agustus', masuk: 45, keluar: 34, disposisi: 41 },
-            { bulan: 'September', masuk: 39, keluar: 28, disposisi: 37 },
-            { bulan: 'Oktober', masuk: 48, keluar: 36, disposisi: 44 },
-            { bulan: 'November', masuk: suratMasukList.length, keluar: suratKeluarList.length, disposisi: suratMasukList.filter(s => s.disposisi).length },
-            { bulan: 'Desember', masuk: 0, keluar: 0, disposisi: 0 }
-          ];
+          const rekapitulasiBulanan = rekapBulananDb;
+          const handleExportPDF = () => {
+            const tahun = new Date().getFullYear();
+            const totalMasuk = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.masuk || 0), 0);
+            const totalKeluar = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.keluar || 0), 0);
+            const totalDisposisi = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.disposisi || 0), 0);
+            const totalRasio = totalMasuk > 0 ? Math.round((totalDisposisi / totalMasuk) * 100) : 0;
+
+            const rowsHtml = rekapitulasiBulanan
+              .map((r: any, idx: number) => {
+                const rasio = r.masuk > 0 ? Math.min(100, Math.round((r.disposisi / r.masuk) * 100)) : 0;
+                return `
+        <tr>
+          <td style="text-align:center;">${idx + 1}</td>
+          <td>${r.bulan}</td>
+          <td style="text-align:center;">${r.masuk}</td>
+          <td style="text-align:center;">${r.keluar}</td>
+          <td style="text-align:center;">${r.disposisi}</td>
+          <td style="text-align:center;">${rasio}%</td>
+        </tr>
+      `;
+              })
+              .join('');
+            const logoUrl = new URL(LOGO_KOTA_BITUNG_SULAWESI_UTARA, window.location.origin).href;
+            const printWindow = window.open('', '_blank', 'width=900,height=700');
+            if (!printWindow) return;
+
+            printWindow.document.write(`
+    <html>
+      <head>
+        <title>Laporan Rekapitulasi Persuratan BKPSDMD ${tahun}</title>
+        <style>
+          @page { size: A4; margin: 16mm; }
+          body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; }
+          .kop { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 18px; }
+          .kop h2 { margin: 0; font-size: 14pt; }
+          .kop h3 { margin: 2px 0; font-size: 12pt; }
+          .kop p { margin: 4px 0 0; font-size: 10pt; color: #475569; }
+          table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px 10px; }
+          th { background-color: #047857; color: #ffffff; }
+          tfoot td { background-color: #f1f5f9; font-weight: bold; }
+          .ttd { margin-top: 36px; float: right; width: 240px; text-align: left; font-size: 10pt; }
+        </style>
+      </head>
+      <body>
+        <div class="kop">
+        <img
+    src="${logoUrl}"
+    alt="Logo Kota Bitung"
+    style="height: 64px; width: auto; display: block; margin: 0 auto 8px auto;"
+  />
+          <h3>
+          PEMERINTAH KOTA BITUNG
+          </h3>
+          <h2>BADAN KEPEGAWAIAN DAN PENGEMBANGAN SUMBER DAYA MANUSIA DAERAH</h2>
+          <p>Laporan Rekapitulasi Aktivitas Persuratan Digital — Tahun ${tahun}</p>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>Bulan Pelaporan</th>
+              <th>Surat Masuk</th>
+              <th>Surat Keluar</th>
+              <th>Disposisi</th>
+              <th>Rasio Selesai</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2" style="text-align:center;">TOTAL</td>
+              <td style="text-align:center;">${totalMasuk}</td>
+              <td style="text-align:center;">${totalKeluar}</td>
+              <td style="text-align:center;">${totalDisposisi}</td>
+              <td style="text-align:center;">${totalRasio}%</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div class="ttd">
+          <p>Bitung, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}<br/>Kepala BKPSDMD Kota Bitung,</p>
+          <br/><br/><br/>
+          <p><strong>______________________________</strong></p>
+        </div>
+      </body>
+    </html>
+  `);
+
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+              printWindow.print();
+              printWindow.close();
+            }, 300);
+          };
+
 
           const maxChartValue = Math.max(...rekapitulasiBulanan.map((r) => Math.max(r.masuk, r.keluar, r.disposisi))) || 50;
 
           // Fungsi Ekspor CSV / Excel
           const handleExportCSV = () => {
-            const csvRows = [
-              ['Bulan Pelaporan', 'Surat Masuk (Registrasi)', 'Surat Keluar Internal', 'Disposisi Diterbitkan', 'Rasio Penyelesaian'],
-              ...rekapitulasiBulanan.map((r) => {
-                const rasio = r.masuk > 0 ? Math.round((r.disposisi / r.masuk) * 100) : 0;
-                return [r.bulan, r.masuk, r.keluar, r.disposisi, `${rasio}%`];
+            const tahun = new Date().getFullYear();
+            const totalMasuk = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.masuk || 0), 0);
+            const totalKeluar = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.keluar || 0), 0);
+            const totalDisposisi = rekapitulasiBulanan.reduce((sum: number, r: any) => sum + (r.disposisi || 0), 0);
+            const totalRasio = totalMasuk > 0 ? Math.round((totalDisposisi / totalMasuk) * 100) : 0;
+
+            const rowsHtml = rekapitulasiBulanan
+              .map((r: any) => {
+                const rasio = r.masuk > 0 ? Math.min(100, Math.round((r.disposisi / r.masuk) * 100)) : 0;
+                return `
+        <tr>
+          <td style="border:1px solid #cbd5e1; padding:6px 10px;">${r.bulan}</td>
+          <td style="border:1px solid #cbd5e1; padding:6px 10px; text-align:center;">${r.masuk}</td>
+          <td style="border:1px solid #cbd5e1; padding:6px 10px; text-align:center;">${r.keluar}</td>
+          <td style="border:1px solid #cbd5e1; padding:6px 10px; text-align:center;">${r.disposisi}</td>
+          <td style="border:1px solid #cbd5e1; padding:6px 10px; text-align:center;">${rasio}%</td>
+        </tr>
+      `;
               })
-            ];
-            const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map((e) => e.join(',')).join('\n');
-            const encodedUri = encodeURI(csvContent);
+              .join('');
+
+            const tableHtml = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8" /></head>
+    <body>
+      <table>
+        <tr>
+          <td colspan="5" style="font-size:14pt; font-weight:bold;">REKAPITULASI PERSURATAN E-SURAT BKPSDMD KOTA BITUNG</td>
+        </tr>
+        <tr>
+          <td colspan="5" style="font-size:10pt; color:#475569;">Tahun Pelaporan: ${tahun}</td>
+        </tr>
+        <tr><td colspan="5"></td></tr>
+        <thead>
+          <tr style="background-color:#047857; color:#ffffff; font-weight:bold;">
+            <th style="border:1px solid #047857; padding:8px 12px;">Bulan Pelaporan</th>
+            <th style="border:1px solid #047857; padding:8px 12px;">Surat Masuk (Registrasi)</th>
+            <th style="border:1px solid #047857; padding:8px 12px;">Surat Keluar Internal</th>
+            <th style="border:1px solid #047857; padding:8px 12px;">Disposisi Diterbitkan</th>
+            <th style="border:1px solid #047857; padding:8px 12px;">Rasio Penyelesaian</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+          <tr style="background-color:#f1f5f9; font-weight:bold;">
+            <td style="border:1px solid #cbd5e1; padding:8px 10px;">TOTAL</td>
+            <td style="border:1px solid #cbd5e1; padding:8px 10px; text-align:center;">${totalMasuk}</td>
+            <td style="border:1px solid #cbd5e1; padding:8px 10px; text-align:center;">${totalKeluar}</td>
+            <td style="border:1px solid #cbd5e1; padding:8px 10px; text-align:center;">${totalDisposisi}</td>
+            <td style="border:1px solid #cbd5e1; padding:8px 10px; text-align:center;">${totalRasio}%</td>
+          </tr>
+        </tbody>
+      </table>
+    </body>
+    </html>
+  `;
+
+            const blob = new Blob(['\uFEFF', tableHtml], {
+              type: 'application/vnd.ms-excel;charset=utf-8;',
+            });
+            const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.setAttribute('href', encodedUri);
-            link.setAttribute('download', 'rekapitulasi_persuratan_admin_2026.csv');
+            link.href = url;
+            link.download = `Rekapitulasi_Persuratan_BKPSDMD_${tahun}.xls`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            URL.revokeObjectURL(url);
           };
 
 
@@ -788,18 +1001,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                   <div className="flex items-center gap-2 ml-auto">
                     <button
-                      onClick={() => window.print()}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-200 transition cursor-pointer"
+                      onClick={handleExportPDF}
+                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
                     >
                       <Printer className="w-3.5 h-3.5" />
-                      <span>Cetak Laporan</span>
+                      <span>Cetak / Ekspor PDF</span>
                     </button>
                     <button
                       onClick={handleExportCSV}
                       className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Ekspor CSV/Excel</span>
+                      <span>Ekspor Excel</span>
                     </button>
                   </div>
                 </div>
@@ -1079,13 +1292,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <label className="block font-bold uppercase tracking-wider text-slate-700 mb-1">
                       Password {editingUserId && '(Kosongkan jika tak diubah)'}:
                     </label>
-                    <input
-                      type="password"
-                      value={userPassword}
-                      onChange={(e) => setUserPassword(e.target.value)}
-                      placeholder={editingUserId ? 'Biarkan kosong' : 'Kata sandi'}
-                      className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-mono"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={userPassword}
+                        onChange={(e) => setUserPassword(e.target.value)}
+                        placeholder={editingUserId ? 'Biarkan kosong' : 'Kata sandi'}
+                        className="w-full p-2.5 pr-10 bg-white border border-slate-300 rounded-xl font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer transition"
+                        title={showPassword ? 'Sembunyikan password' : 'Lihat password'}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
 

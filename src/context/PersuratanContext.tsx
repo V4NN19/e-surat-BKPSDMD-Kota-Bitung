@@ -52,6 +52,8 @@ interface PersuratanContextType {
     id_kategori: number;
     file_name: string;
     file_url?: string;
+    tanggal_surat?: string;
+    tgl_arsip?: string | null;
   }) => SuratMasuk;
   verifikasiSuratMasuk: (id: number) => void;
   kembalikanKeLoket: (id: number, alasan: string) => void;
@@ -83,6 +85,7 @@ interface PersuratanContextType {
   uploadRevisiSuratKeluar: (id: number, fileName: File | string, catatanPerbaikan: string) => void;
   teruskanSuratKeluar: (id: number) => void;
   tandaiNaskahDiterima: (id: number) => void;
+  arsipkanSuratKeluar: (id: number) => Promise<void>;
 
   // Master Data CRUD
   tambahUser: (user: Omit<User, 'id' | 'created_at'>) => void;
@@ -600,45 +603,54 @@ export const PersuratanProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const arsipkanSurat = (idSuratMasuk: number, keterangan?: string) => {
-    const date = new Date();
-    const tglArsipStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    setSuratMasukList(prev =>
-      prev.map(s => {
-        if (s.id === idSuratMasuk) {
-          logAudit('ARSIP_SURAT', `${currentUser?.nama || 'Pengguna'} mengarsipkan surat ${s.no_agenda}`);
-          return {
-            ...s,
-            status_surat: 'ARSIP' as any,
-            is_arsip: true,
-            tgl_arsip: tglArsipStr,
-            keterangan_arsip: keterangan || 'Diarsipkan di lemari dokumen BKPSDMD'
-          };
-        }
-        return s;
-      })
-    );
+  const arsipkanSurat = async (idSuratMasuk: number, keterangan?: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/surat_masuk/${idSuratMasuk}/arsip`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify({
+          keterangan: keterangan || 'Diarsipkan di lemari dokumen BKPSDMD'
+        })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        logAudit('ARSIP_SURAT', `${currentUser?.nama || 'Pengguna'} mengarsipkan surat ID ${idSuratMasuk}`);
+        await fetchLiveData();
+      } else {
+        alert(data.message || 'Gagal mengarsipkan surat.');
+      }
+    } catch (err) {
+      console.error('Error arsipkanSurat:', err);
+      alert('Gagal terhubung ke server backend.');
+    }
   };
 
-
-  const batalArsip = (idSuratMasuk: number) => {
-    setSuratMasukList(prev =>
-      prev.map(s => {
-        if (s.id === idSuratMasuk) {
-          logAudit('BATAL_ARSIP', `${currentUser?.nama || 'Pengguna'} membatalkan arsip surat ${s.no_agenda}`);
-          return {
-            ...s,
-            status_surat: 'SELESAI',
-            is_arsip: false,
-            tgl_arsip: undefined,
-            keterangan_arsip: undefined
-          };
+  const batalArsip = async (idSuratMasuk: number) => {
+    try {
+      const res = await fetch(`${API_URL}/api/surat_masuk/${idSuratMasuk}/batal-arsip`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
         }
-        return s;
-      })
-    );
-  };
+      });
+      const data = await res.json();
 
+      if (res.ok) {
+        logAudit('BATAL_ARSIP', `${currentUser?.nama || 'Pengguna'} membatalkan arsip surat ID ${idSuratMasuk}`);
+        await fetchLiveData();
+      } else {
+        alert(data.message || 'Gagal membatalkan arsip surat.');
+      }
+    } catch (err) {
+      console.error('Error batalArsip:', err);
+      alert('Gagal terhubung ke server backend.');
+    }
+  };
   // 3. Surat Keluar Actions
   const buatSuratKeluar = async (data: {
     no_draft: string;
@@ -872,6 +884,40 @@ export const PersuratanProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.error('Gagal menandai naskah diterima:', error);
     }
   };
+
+  const arsipkanSuratKeluar = async (id: number) => {
+    try {
+      const res = await fetch(`${API_URL}/api/surat_keluar/${id}/arsip`, {
+        method: 'PATCH',
+        headers: authHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || 'Gagal mengarsipkan naskah dinas internal.');
+        return;
+      }
+      setSuratKeluarList(prev =>
+        prev.map(s => {
+          if (s.id === id) {
+            logAudit(
+              'ARSIP_SURAT_KELUAR',
+              `Sekretariat mengarsipkan naskah internal ${s.no_draft} (${s.perihal})`
+            );
+            return {
+              ...s,
+              status_persetujuan: 'DIARSIPKAN'
+            };
+          }
+          return s;
+        })
+      );
+      await fetchLiveData();
+    } catch (error) {
+      console.error('Error arsipkanSuratKeluar:', error);
+      alert('Terjadi kesalahan koneksi saat mengarsipkan naskah.');
+    }
+  };
+
 
   // 4. Master Data CRUD
   const tambahUser = async (newUser: Omit<User, 'id' | 'created_at'>) => {
@@ -1151,6 +1197,7 @@ export const PersuratanProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         uploadRevisiSuratKeluar,
         teruskanSuratKeluar,
         tandaiNaskahDiterima,
+        arsipkanSuratKeluar,
         tambahUser,
         editUser,
         hapusUser,

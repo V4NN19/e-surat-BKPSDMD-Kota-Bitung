@@ -76,7 +76,7 @@ const inputSuratMasuk = async (req, res) => {
       const idPetugas = req.user.id;
       const fileName = req.file ? req.file.filename : 'dummy_surat.pdf';
 
-      if (!asal_surat || !no_surat || !tgl_surat || !perihal || !id_kategori) {
+      if (!asal_surat || !no_surat || !tgl_surat || !perihal || !id_kategori || !sifat) {
         return res.status(400).json({ success: false, message: 'Semua bidang wajib diisi.' });
       }
 
@@ -86,7 +86,8 @@ const inputSuratMasuk = async (req, res) => {
       // Simpan ke database
       const [result] = await db.query(
         `INSERT INTO surat_masuk 
-         (no_agenda, asal_surat, no_surat, tgl_surat, perihal, sifat, file_pdf, id_kategori, id_petugas_loket, status_surat, tgl_input)
+         (no_agenda, asal_surat, no_surat, tgl_surat, perihal, sifat, file_pdf, id_kategori, 
+         id_petugas_loket, status_surat, tgl_input)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'MENUNGGU_VERIFIKASI_SEKRETARIAT', NOW())`,
         [noAgenda, asal_surat, no_surat, tgl_surat, perihal, sifat || 'Biasa', fileName, id_kategori, idPetugas]
       );
@@ -333,12 +334,18 @@ const getAllSuratMasuk = async (req, res) => {
     const [rows] = await db.query('SELECT * FROM surat_masuk ORDER BY id DESC');
     const [disposisiRows] = await db.query('SELECT * FROM disposisi ORDER BY id DESC');
     const [pengembalianRows] = await db.query('SELECT * FROM pengembalian_surat ORDER BY id ASC');
+    const [userRows] = await db.query('SELECT * FROM users');
 
     const enriched = rows.map((surat) => {
       const disp = disposisiRows.find((d) => d.id_surat_masuk === surat.id);
       const riwayat = pengembalianRows.filter((p) => p.id_surat_masuk === surat.id);
+      const petugas = userRows.find((u) => u.id === surat.id_petugas_loket);
+
       return {
         ...surat,
+        nama_petugas_loket: petugas
+          ? (petugas.nama_lengkap || petugas.nama || petugas.username)
+          : null,
         disposisi: disp || undefined,
         riwayat_pengembalian: riwayat
       };

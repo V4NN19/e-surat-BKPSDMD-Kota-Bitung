@@ -1,7 +1,7 @@
 /**
  * @file Sidebar.tsx
  * @description Sidebar Navigasi Utama Sistem Persuratan BKPSDMD Kota Bitung
- * - Menampilkan Menu Utama Role tanpa bagian profil (profil sudah pindah ke Header)
+ * Menampilkan Menu Utama Role tanpa bagian profil (profil sudah pindah ke Header)
  */
 
 import React from 'react';
@@ -11,8 +11,6 @@ import {
   Inbox,
   FileCheck2,
   Crown,
-  Briefcase,
-  Shield,
   FilePlus,
   ListFilter,
   Send,
@@ -23,9 +21,9 @@ import {
   History,
   LogOut,
   FileText,
-  CheckCircle
+  CheckCircle,
+  Archive
 } from 'lucide-react';
-import { span } from 'motion/react-client';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -43,7 +41,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSchemaModal
 }) => {
   const { currentUser, logout, suratMasukList, suratKeluarList } = usePersuratan();
-
 
   if (!currentUser) return null;
 
@@ -64,7 +61,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-
   const badgeInfo = getRoleBadge(currentUser.role);
 
   const handleItemClick = (menuKey: string) => {
@@ -74,6 +70,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  const getMenuClass = (isActive: boolean) =>
+    isActive
+      ? 'bg-emerald-600 text-white font-bold shadow-xs'
+      : 'text-slate-300 hover:bg-slate-800 hover:text-white';
+
+  const getIconClass = (isActive: boolean) =>
+    `w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-emerald-400'}`;
+
   const suratKeluarMenungguApproval = suratKeluarList.filter(
     (sk) => sk.status_persetujuan === 'PENGAJUAN_KE_KEPALA_BADAN'
   );
@@ -81,11 +85,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const menungguDisposisi = suratMasukList.filter(
     (sm) => sm.status_surat === 'MENUNGGU_DISPOSISI_KEPALA_BADAN'
   );
-  const totalMenungguDisposisi = menungguDisposisi.length;
+
   const totalMenungguVerifikasi = suratMasukList.filter(
     (sm) => sm.status_surat === 'MENUNGGU_VERIFIKASI_SEKRETARIAT'
   );
 
+
+  // Hitung surat masuk yang siap diarsip (sesuaikan dengan filter yang sudah ada di Sidebar Anda)
+  const suratMasukSiapArsipCount = (suratMasukList || []).filter(
+    (s) => s.status_surat === 'SELESAI'
+  ).length;
+
+  // Hitung surat keluar internal yang sudah dilihat bagian tujuan & siap diarsip
+  const suratKeluarSiapArsipCount = (suratKeluarList || []).filter(
+    (sk) => sk.status_persetujuan === 'DITERIMA_BAGIAN_TUJUAN'
+  ).length;
+
+  const totalSiapArsip = suratMasukSiapArsipCount + suratKeluarSiapArsipCount;
 
   return (
     <>
@@ -107,8 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         {/* Kontainer Scrollable */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-
-          {/* MENU UTAMA PERAN (Langsung di paling atas) */}
+          {/* MENU UTAMA PERAN */}
           <div className="space-y-1">
             <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 border-b border-slate-800 pb-2">
               Menu Utama {badgeInfo.label}
@@ -119,23 +134,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <>
                 <button
                   onClick={() => handleItemClick('input')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'input'
-                    ? 'bg-blue-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'input')}`}
                 >
-                  <FilePlus className="w-4 h-4 text-blue-400 shrink-0" />
+                  <FilePlus className={getIconClass(activeMenu === 'input')} />
                   <span>Form Registrasi Surat Masuk</span>
                 </button>
                 <button
                   onClick={() => handleItemClick('daftar')}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'daftar'
-                    ? 'bg-blue-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'daftar')}`}
                 >
                   <div className="flex items-center gap-2.5 truncate mr-2">
-                    <ListFilter className="w-4 h-4 text-blue-400 shrink-0" />
+                    <ListFilter className={getIconClass(activeMenu === 'daftar')} />
                     <span className="truncate">Daftar Surat Diinput</span>
                   </div>
                 </button>
@@ -147,52 +156,46 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <>
                 <button
                   onClick={() => handleItemClick('verifikasi')}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'verifikasi'
-                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'verifikasi')}`}
                 >
                   <div className="flex items-center gap-2.5 truncate mr-2">
-                    <FileCheck2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <FileCheck2 className={getIconClass(activeMenu === 'verifikasi')} />
                     <span className="truncate">Verifikasi Surat Masuk</span>
                   </div>
                   {totalMenungguVerifikasi.length > 0 && (
-                    <span className="text-[11px] font-mono font-bold text-slate-300 bg-red-600 px-2 py-0.5 rounded-full">
+                    <span className="text-[11px] font-mono font-bold text-white bg-red-600 px-2 py-0.5 rounded-full">
                       {totalMenungguVerifikasi.length}
                     </span>
                   )}
                 </button>
                 <button
                   onClick={() => handleItemClick('terverifikasi')}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'terverifikasi'
-                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'terverifikasi')}`}
                 >
                   <div className="flex items-center gap-2.5 truncate mr-2">
-                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <CheckCircle className={getIconClass(activeMenu === 'terverifikasi')} />
                     <span className="truncate">Daftar Terverifikasi</span>
                   </div>
                 </button>
                 <button
                   onClick={() => handleItemClick('pengembalian')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'pengembalian'
-                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'pengembalian')}`}
                 >
-                  <Inbox className="w-4 h-4 text-amber-400 shrink-0" />
+                  <Inbox className={getIconClass(activeMenu === 'pengembalian')} />
                   <span>Pengembalian Surat</span>
                 </button>
                 <button
                   onClick={() => handleItemClick('penerusan')}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'penerusan' || activeMenu === 'penerusan_kaban' || activeMenu === 'penerusan_bagian'
-                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(
+                    activeMenu === 'penerusan' || activeMenu === 'penerusan_kaban' || activeMenu === 'penerusan_bagian'
+                  )}`}
                 >
                   <div className="flex items-center gap-2.5 truncate mr-2">
-                    <Send className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Send
+                      className={getIconClass(
+                        activeMenu === 'penerusan' || activeMenu === 'penerusan_kaban' || activeMenu === 'penerusan_bagian'
+                      )}
+                    />
                     <span className="truncate">Penerusan Surat</span>
                   </div>
                   {suratKeluarList.filter((sk) => sk.status_persetujuan === 'DISETUJUI_KEPALA_BADAN').length > 0 && (
@@ -203,22 +206,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
                 <button
                   onClick={() => handleItemClick('status_penerusan')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'status_penerusan'
-                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'status_penerusan')}`}
                 >
-                  <ListOrdered className="w-4 h-4 text-teal-400 shrink-0" />
+                  <ListOrdered className={getIconClass(activeMenu === 'status_penerusan')} />
                   <span>Status Penerusan Surat</span>
                 </button>
+
+                <button
+                  onClick={() => handleItemClick('arsip')}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'arsip')}`}
+                >
+                  <div className="flex items-center gap-2.5 truncate mr-2">
+                    <Archive className={getIconClass(activeMenu === 'arsip')} />
+                    <span className="truncate">Arsip Surat</span>
+                  </div>
+                  {totalSiapArsip > 0 && (
+                    <span className="text-[11px] font-mono font-bold text-white bg-red-600 px-2 py-0.5 rounded-full">
+                      {totalSiapArsip}
+                    </span>
+                  )}
+                </button>
+
                 <button
                   onClick={() => handleItemClick('rekapitulasiBulanan')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'rekapitulasiBulanan'
-                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'rekapitulasiBulanan')}`}
                 >
-                  <BarChart3 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <BarChart3 className={getIconClass(activeMenu === 'rekapitulasiBulanan')} />
                   <span>Laporan Rekapitulasi</span>
                 </button>
               </>
@@ -229,53 +242,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <>
                 <button
                   onClick={() => handleItemClick('eksekutif')}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'eksekutif'
-                    ? 'bg-amber-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'eksekutif')}`}
                 >
-                  <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                  <Crown className={getIconClass(activeMenu === 'eksekutif')} />
                   <span>Dashboard Eksekutif</span>
                 </button>
                 <button
                   onClick={() => handleItemClick('surat_masuk')}
-                  className={`w-full flex items-center justify-start gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'surat_masuk'
-                    ? 'bg-amber-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'surat_masuk')}`}
                 >
                   <div className="flex items-center gap-2.5 truncate mr-2">
-                    <FileText className="w-4 h-4 text-amber-400 shrink-0" />
+                    <FileText className={getIconClass(activeMenu === 'surat_masuk')} />
                     <span className="truncate">Disposisi Surat</span>
                   </div>
-                  <span>
-                    {menungguDisposisi.length > 0 && (
-                      <span className='px-1.5 py-0.2 rounded-full bg-red-600 text-white text-[10px]'>
-                        {menungguDisposisi.length}
-                      </span>
-                    )}
-                  </span>
-
-
+                  {menungguDisposisi.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[11px] font-mono font-bold">
+                      {menungguDisposisi.length}
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={() => handleItemClick('persetujuan_keluar')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'persetujuan_keluar'
-                    ? 'bg-amber-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'persetujuan_keluar')}`}
                 >
                   <div className="flex items-center gap-2.5 mr-2">
-                    <FileCheck2 className="w-4 h-4 text-amber-400 shrink-0" />
+                    <FileCheck2 className={getIconClass(activeMenu === 'persetujuan_keluar')} />
                     <span className="text-[12px]">Pemeriksaan &amp; Persetujuan Surat Keluar</span>
                   </div>
-                  <span className='px-1.5 py-0.2 rounded-full text-white text-[10px]'>
-                    {suratKeluarMenungguApproval.length > 0 && (
-                      <span className='px-1.5 py-0.2 rounded-full bg-red-600 text-white text-[10px]'>
-                        {suratKeluarMenungguApproval.length}
-                      </span>
-                    )}
-                  </span>
+                  {suratKeluarMenungguApproval.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[11px] font-mono font-bold">
+                      {suratKeluarMenungguApproval.length}
+                    </span>
+                  )}
                 </button>
               </>
             )}
@@ -285,14 +283,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <>
                 <button
                   onClick={() => handleItemClick('masuk_bagian')}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'masuk_bagian'
-                    ? 'bg-purple-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'masuk_bagian')}`}
                 >
                   <div className="flex items-center gap-2.5 truncate mr-2">
-                    <FileText className="w-4 h-4 text-purple-400 shrink-0" />
-                    <span className="truncate">Pengarsipan Surat</span>
+                    <FileText className={getIconClass(activeMenu === 'masuk_bagian')} />
+                    <span className="truncate">Surat Masuk</span>
                   </div>
                   {(() => {
                     const totalAktif =
@@ -317,23 +312,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
                 <button
                   onClick={() => handleItemClick('input_keluar')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'input_keluar'
-                    ? 'bg-purple-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'input_keluar')}`}
                 >
-                  <FilePlus className="w-4 h-4 text-purple-400 shrink-0" />
+                  <FilePlus className={getIconClass(activeMenu === 'input_keluar')} />
                   <span>Buat Konsep Surat Keluar</span>
                 </button>
                 <button
                   onClick={() => handleItemClick('daftar_keluar')}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'daftar_keluar'
-                    ? 'bg-purple-600 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'daftar_keluar')}`}
                 >
                   <div className="flex items-center gap-2.5 truncate mr-2">
-                    <ListOrdered className="w-4 h-4 text-purple-400 shrink-0" />
+                    <ListOrdered className={getIconClass(activeMenu === 'daftar_keluar')} />
                     <span className="truncate">Riwayat Surat Keluar</span>
                   </div>
                 </button>
@@ -345,42 +334,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <>
                 <button
                   onClick={() => handleItemClick('rekap')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'rekap'
-                    ? 'bg-slate-700 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'rekap')}`}
                 >
-                  <BarChart3 className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <BarChart3 className={getIconClass(activeMenu === 'rekap')} />
                   <span>Rekapan Aktivitas Surat</span>
                 </button>
                 <button
                   onClick={() => handleItemClick('users')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'users'
-                    ? 'bg-slate-700 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'users')}`}
                 >
-                  <Users className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <Users className={getIconClass(activeMenu === 'users')} />
                   <span>Manajemen Pengguna</span>
                 </button>
                 <button
                   onClick={() => handleItemClick('master')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'master'
-                    ? 'bg-slate-700 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'master')}`}
                 >
-                  <Database className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <Database className={getIconClass(activeMenu === 'master')} />
                   <span>Pengelolaan Data Master</span>
                 </button>
                 <button
                   onClick={() => handleItemClick('log')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${activeMenu === 'log'
-                    ? 'bg-slate-700 text-white font-bold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer min-h-[44px] ${getMenuClass(activeMenu === 'log')}`}
                 >
-                  <History className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <History className={getIconClass(activeMenu === 'log')} />
                   <span>Log Aktivitas</span>
                 </button>
               </>
@@ -390,15 +367,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Bottom Bar: Skema & Logout */}
         <div className="p-4 border-t border-slate-800 space-y-2 bg-slate-950/40">
-          {onOpenSchemaModal && (
-            <button
-              onClick={onOpenSchemaModal}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold transition border border-slate-700/60 cursor-pointer min-h-[40px]"
-            >
-              <Database className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-              <span>Skema SQL &amp; Controller API</span>
-            </button>
-          )}
 
           <button
             onClick={logout}
@@ -412,7 +380,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             BKPSDMD Kota Bitung • Sulawesi Utara
           </p>
         </div>
-      </aside >
+      </aside>
     </>
   );
 };

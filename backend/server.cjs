@@ -14,7 +14,12 @@ const db = require('./config/database.cjs');
 const PORT = process.env.PORT || 5000;
 
 // Middleware Global
-app.use(cors());
+// Middleware Global
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -390,6 +395,33 @@ app.patch(
       return res.json({
         success: true,
         message: 'Naskah dinas internal berhasil ditandai sudah diterima bagian tujuan.'
+      });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+);
+
+app.patch(
+  '/api/surat_keluar/:id/arsip',
+  verifyToken,
+  authorizeRoles('SEKRETARIAT', 'ADMIN'),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const [result] = await db.query(
+        "UPDATE surat_keluar SET status_persetujuan = 'DIARSIPKAN' WHERE id = ? AND status_persetujuan = 'DITERIMA_BAGIAN_TUJUAN'",
+        [id]
+      );
+      if (result && result.affectedRows === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Naskah belum dilihat/diterima oleh bagian tujuan atau sudah diarsipkan.'
+        });
+      }
+      return res.json({
+        success: true,
+        message: 'Naskah dinas internal berhasil diarsipkan oleh Sekretariat.'
       });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });

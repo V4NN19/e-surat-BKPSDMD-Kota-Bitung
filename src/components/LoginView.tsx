@@ -7,6 +7,7 @@
 
 import React, { useState } from 'react';
 import { usePersuratan } from '../context/PersuratanContext';
+import LOGO_KOTA_BITUNG_SULAWESI_UTARA from '../assets/LOGO_KOTA_BITUNG_SULAWESI_UTARA.png'
 import {
   Building2,
   Lock,
@@ -72,8 +73,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenSchemaModal }) => {
 
       {/* Top Header Logo & Identitas Pemkot Bitung */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="inline-flex p-3.5 bg-gradient-to-br from-emerald-600 to-teal-800 rounded-2xl shadow-xl shadow-emerald-900/40 border border-emerald-400/30 mb-3">
-          <Building2 className="w-8 h-8 text-amber-300" />
+        <div className="w-24 h-24 mx-auto mb-3 flex items-center justify-center shrink-0">
+          <img
+            src={LOGO_KOTA_BITUNG_SULAWESI_UTARA}
+            alt="logo kota bitung"
+            className="w-full h-full object-contain drop-shadow-[0_10px_22px_rgba(16,185,129,0.45)] 
+            transition-all duration-500 ease-out hover:scale-110 hover:drop-shadow-[0_14px_28px_rgba(255,255,255,0.35)] 
+            animate-float"
+          />
         </div>
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white uppercase">
           E-SURAT BKPSDMD
@@ -82,14 +89,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenSchemaModal }) => {
           PEMERINTAH KOTA BITUNG
         </p>
         <p className="text-xs text-slate-300 mt-2 max-w-sm mx-auto">
-          Sistem Informasi Pengelolaan Surat Masuk, Surat Keluar, Disposisi Digital &amp; Pengarsipan Terpadu
+          Sistem Pengelolaan Surat Masuk, Surat Keluar, Disposisi Digital &amp; Pengarsipan Terpadu
         </p>
       </div>
 
       {/* Card Form Login */}
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-6 sm:px-8 shadow-2xl rounded-2xl border border-slate-200">
-
           <div className="mb-6 pb-4 border-b border-slate-100 text-center">
             <h2 className="text-lg font-black text-slate-900">
               Masuk ke Akun Anda
@@ -171,86 +177,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenSchemaModal }) => {
               </button>
             </div>
           </form>
-
-          {/* Bantuan Akun Cepat / Demo Login */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2.5 text-center">
-              Pilihan Akun Demo (Klik untuk Isi Cepat):
-            </p>
-            <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-              <button
-                type="button"
-                onClick={() => handleSelectDemo('loket', 'loket123')}
-                className="p-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 text-left border border-blue-200 transition flex items-center gap-1.5"
-              >
-                <Inbox className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <div className="truncate">
-                  <p className="font-bold">Petugas Loket</p>
-                  <p className="text-slate-500 text-[9px]">loket / loket123</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSelectDemo('sekretariat', 'sekretariat123')}
-                className="p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-left border border-emerald-200 transition flex items-center gap-1.5"
-              >
-                <FileCheck2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <div className="truncate">
-                  <p className="font-bold">Sekretariat</p>
-                  <p className="text-slate-500 text-[9px]">sekretariat / ...</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSelectDemo('kepala_kantor', 'kepala123')}
-                className="p-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 text-left border border-amber-200 transition flex items-center gap-1.5"
-              >
-                <Crown className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <div className="truncate">
-                  <p className="font-bold">Kepala Badan</p>
-                  <p className="text-slate-500 text-[9px]">kepala_kantor / ...</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSelectDemo('kabag_mutasi', 'kabag123')}
-                className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-900 text-left border border-purple-200 transition flex items-center gap-1.5"
-              >
-                <Briefcase className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                <div className="truncate">
-                  <p className="font-bold">Kepala Bagian</p>
-                  <p className="text-slate-500 text-[9px]">kabag_mutasi / ...</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSelectDemo('admin', 'admin123')}
-                className="col-span-2 p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-left border border-slate-300 transition flex items-center justify-between"
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <Shield className="w-3.5 h-3.5 text-slate-700 shrink-0" />
-                  <span className="font-bold">Administrator Sistem</span>
-                </div>
-                <span className="text-slate-500 text-[9px]">admin / admin123</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Trigger Skema Database */}
-          <div className="mt-5 pt-3 border-t border-slate-100 text-center">
-            <button
-              type="button"
-              onClick={onOpenSchemaModal}
-              className="text-[11px] text-indigo-700 hover:text-indigo-900 font-semibold inline-flex items-center gap-1 transition"
-            >
-              <Database className="w-3 h-3" />
-              <span>Lihat Skema Database (8 Tabel) &amp; API Controller</span>
-            </button>
-          </div>
         </div>
       </div>
 
