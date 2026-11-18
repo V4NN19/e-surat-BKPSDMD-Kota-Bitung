@@ -454,7 +454,7 @@ export const ArsipSurat: React.FC<ArsipSuratProps> = ({
 
                     return (
                       <tr key={surat.id} className="hover:bg-teal-50/40 transition group">
-                        <td className="py-2.5 px-2.5 font-mono font-bold text-slate-900 text-[11px] break-words">
+                        <td className="py-2.5 px-2.5 font-mono font-bold text-center text-slate-900 text-[11px] break-words">
                           {surat.no_agenda}
                         </td>
                         <td className="py-2.5 px-2.5 text-center border-l border-r border-slate-200">

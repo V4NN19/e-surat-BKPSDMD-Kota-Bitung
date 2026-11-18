@@ -40,11 +40,13 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
   const {
     suratMasukList,
     suratKeluarList,
+    bagianList,
     verifikasiSuratMasuk,
     kembalikanKeLoket,
     teruskanKeBagian,
     teruskanSuratKeluar,
-    arsipkanSuratKeluar
+    arsipkanSuratKeluar,
+    updateStatusPengerjaan
   } = usePersuratan();
 
   const [internalMenu, setInternalMenu] = useState<string>('verifikasi');
@@ -98,9 +100,40 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
   );
 
   // Surat siap diteruskan ke Kepala Bagian (status: DISPOSISI_DIBUAT)
+  // Identifikasi unit Sekretariat (kode_bagian: 'SEKR')
+  const idSekretariat = (bagianList || []).find(
+    (b: any) =>
+      b.kode_bagian?.toUpperCase() === 'SEKR' ||
+      b.nama_bagian?.toLowerCase().includes('sekretar')
+  )?.id;
+
+  const isTujuanSekretaris = (s: SuratMasuk) => {
+    if (!s.disposisi) return false;
+    const namaTujuan = (s.disposisi.nama_bagian_tujuan || '').toLowerCase();
+    return (
+      (idSekretariat !== undefined && s.disposisi.id_bagian_tujuan === idSekretariat) ||
+      namaTujuan.includes('sekretaris') ||
+      namaTujuan.includes('sekretariat')
+    );
+  };
+
+  // Surat siap diteruskan ke Kepala Bidang (selain tujuan Sekretaris)
   const siapDiteruskanKeBagian = suratMasukList.filter(
-    (s) => s.status_surat === 'DISPOSISI_DIBUAT'
+    (s) => s.status_surat === 'DISPOSISI_DIBUAT' && !isTujuanSekretaris(s)
   );
+
+  // Disposisi Kepala Badan yang diarahkan ke Sekretaris (langsung ditangani Sekretariat)
+  const disposisiSekretaris = suratMasukList.filter(
+    (s) =>
+      isTujuanSekretaris(s) &&
+      ['DISPOSISI_DIBUAT', 'DITERUSKAN_KE_BAGIAN', 'SEDANG_DIPROSES', 'SELESAI'].includes(
+        s.status_surat
+      )
+  );
+
+  const disposisiSekretarisAktifCount = disposisiSekretaris.filter(
+    (s) => s.status_surat !== 'SELESAI'
+  ).length;
 
   // Surat siap/sedang diajukan ke Kepala Kantor (status: MENUNGGU_DISPOSISI_KEPALA_KANTOR)
   const antreanKepalaKantor = suratMasukList.filter(
@@ -404,48 +437,63 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
 
   return (
     <div className="space-y-6">
-
       {/* Subheader Dashboard */}
-      {(activeMenu === 'verifikasi' || activeMenu === 'terverifikasi') && (
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div>
-              <h1 className="text-[30px] font-black text-slate-900 tracking-tight">
-                Dashboard Sekretariat BKPSDMD
-              </h1>
-              <p className="text-xs text-slate-500">
-                Verifikasi keabsahan surat masuk, dan tata kelola pengembalian berkas
-              </p>
+      {(activeMenu === 'verifikasi' ||
+        activeMenu === 'terverifikasi' ||
+        activeMenu === 'disposisi_sekretaris') && (
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div>
+                <h1 className="text-[30px] font-black text-slate-900 tracking-tight">
+                  Dashboard Sekretariat BKPSDMD
+                </h1>
+                <p className="text-xs text-slate-500">
+                  Verifikasi keabsahan surat masuk, dan tata kelola pengembalian berkas
+                </p>
+              </div>
+            </div>
+
+            {/* Menu Navigation Pills */}
+            <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 text-xs font-bold">
+              <button
+                onClick={() => handleMenuChange('verifikasi')}
+                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-2 ${activeMenu === 'verifikasi'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
+              >
+                <span>Verifikasi</span>
+
+                {menungguVerifikasi.length > 0 && (
+                  <span className="w-5 h-5 text-[10px] font-bold rounded-full bg-red-600 text-white flex items-center justify-center shrink-0">
+                    {menungguVerifikasi.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => handleMenuChange('disposisi_sekretaris')}
+                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-2 cursor-pointer ${activeMenu === 'disposisi_sekretaris'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
+              >
+                <span>Disposisi Sekretaris</span>
+                {disposisiSekretarisAktifCount > 0 && (
+                  <span className="w-5 h-5 text-[10px] font-bold rounded-full bg-amber-500 text-white flex items-center justify-center">
+                    {disposisiSekretarisAktifCount}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => handleMenuChange('terverifikasi')}
+                className={`px-3 py-1.5 rounded-lg transition ${activeMenu === 'terverifikasi' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+              >
+                Terverifikasi ({terverifikasi.length})
+              </button>
             </div>
           </div>
-
-          {/* Menu Navigation Pills */}
-          <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 text-xs font-bold">
-            <button
-              onClick={() => handleMenuChange('verifikasi')}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-2 ${activeMenu === 'verifikasi'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-                }`}
-            >
-              <span>Verifikasi</span>
-
-              {menungguVerifikasi.length > 0 && (
-                <span className="w-5 h-5 text-[10px] font-bold rounded-full bg-red-600 text-white flex items-center justify-center shrink-0">
-                  {menungguVerifikasi.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => handleMenuChange('terverifikasi')}
-              className={`px-3 py-1.5 rounded-lg transition ${activeMenu === 'terverifikasi' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-            >
-              Terverifikasi ({terverifikasi.length})
-            </button>
-          </div>
-        </div>
-      )}
+        )}
 
       {/* 1. MENU: VERIFIKASI SURAT MASUK */}
       {activeMenu === 'verifikasi' && (
@@ -786,6 +834,137 @@ export const SekretariatDashboard: React.FC<SekretariatDashboardProps> = ({
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3B. MENU: DISPOSISI MASUK UNTUK SEKRETARIS / SEKRETARIAT */}
+      {activeMenu === 'disposisi_sekretaris' && (
+        <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+          <div className="pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h1 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                <FileCheck2 className="w-5 h-5 text-amber-600" />
+                <span>Disposisi Masuk untuk Sekretaris / Sekretariat</span>
+              </h1>
+              <p className="text-xs text-slate-500">
+                Surat masuk yang didisposisikan Kepala Badan kepada Sekretaris dan jajaran Sekretariat untuk ditindaklanjuti langsung.
+              </p>
+            </div>
+            <span className="text-xs font-bold px-3 py-1 bg-amber-50 text-amber-800 rounded-full border border-amber-200 self-start sm:self-auto">
+              {disposisiSekretaris.length} Berkas Disposisi
+            </span>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl">
+            <table className="w-full text-left text-xs border-collapse min-w-[760px]">
+              <thead className="bg-slate-50">
+                <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-200">
+                  <th className="w-[15%] py-3 px-3 text-center border-r border-l border-slate-200">No. Agenda</th>
+                  <th className="w-[27%] py-3 px-3 text-center border-r border-slate-200">Asal, No, &amp; Perihal Surat</th>
+                  <th className="w-[24%] py-3 px-3 text-center border-r border-slate-200">Instruksi Kepala Badan</th>
+                  <th className="w-[16%] py-3 px-3 text-center border-r border-slate-200">Status</th>
+                  <th className="w-[18%] py-3 px-3 text-center border-r border-slate-200">Tindak Lanjut</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {disposisiSekretaris.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12 text-slate-400">
+                      Belum ada surat disposisi yang diarahkan ke Sekretaris saat ini.
+                    </td>
+                  </tr>
+                ) : (
+                  disposisiSekretaris.map((surat) => {
+                    const isSelesai = surat.status_surat === 'SELESAI';
+                    const isDiproses = surat.status_surat === 'SEDANG_DIPROSES';
+                    const catatanDisp =
+                      (surat.disposisi as any)?.catatan ||
+                      (surat.disposisi as any)?.catatan_pimpinan;
+
+                    return (
+                      <tr key={surat.id} className="hover:bg-slate-50/80 transition">
+                        <td className="py-3 px-3 font-mono font-bold text-slate-900 text-center border-r border-l border-slate-200">
+                          {surat.no_agenda}
+                        </td>
+                        <td className="py-3 px-3 text-center border-r border-slate-200">
+                          <p className="font-bold text-slate-900">{surat.asal_surat}</p>
+                          <p className="text-[11px] font-bold italic text-slate-700 mt-0.5">
+                            {surat.no_surat}
+                          </p>
+                          <p className="text-[10px] text-slate-600 italic mt-0.5">
+                            "{surat.perihal}"
+                          </p>
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-200">
+                          <div className="space-y-1">
+                            {(surat.disposisi?.instruksi || []).map((ins, i) => (
+                              <p key={i} className="text-[11px] text-slate-800 font-medium">
+                                - {ins}
+                              </p>
+                            ))}
+                            {catatanDisp && (
+                              <p className="text-[10px] text-amber-800 bg-amber-50 px-2 py-1 rounded border border-amber-200 italic mt-1">
+                                Catatan: "{catatanDisp}"
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-center border-r border-slate-200">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border inline-block ${isSelesai
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : isDiproses
+                                ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
+                              }`}
+                          >
+                            {isSelesai
+                              ? 'SELESAI'
+                              : isDiproses
+                                ? 'SEDANG DIPROSES'
+                                : 'MENUNGGU TINDAK LANJUT'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center border-r border-slate-200">
+                          <div className="flex flex-col items-center gap-1.5">
+                            <button
+                              onClick={() => onLihatSurat(surat)}
+                              className="w-full justify-center px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer transition"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Lihat Disposisi</span>
+                            </button>
+
+                            {!isDiproses && !isSelesai && (
+                              <button
+                                onClick={() => updateStatusPengerjaan(surat.id, 'SEDANG_DIPROSES')}
+                                className="w-full justify-center px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-xs cursor-pointer transition"
+                              >
+                                Mulai Proses
+                              </button>
+                            )}
+
+                            {!isSelesai && (
+                              <button
+                                onClick={() => {
+                                  updateStatusPengerjaan(surat.id, 'SELESAI');
+                                  alert(`Disposisi surat ${surat.no_agenda} telah diselesaikan oleh Sekretariat.`);
+                                }}
+                                className="w-full justify-center px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-xs inline-flex items-center gap-1 cursor-pointer transition"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                <span>Tandai Selesai</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
